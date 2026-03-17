@@ -1026,12 +1026,6 @@ function renderProfiles() {
                     value="${profileInputState[p.id].valueInput}"
                     oninput="onProfileValueInput('${p.id}', this.value)" />
                 </div>
-                <div class="pts-badge ${previewPts !== null && previewPts >= PROFILE_MAX_PTS ? 'at-goal' : ''}">
-                  <div class="pts-badge-val" id="profile-pts-${p.id}">
-                    ${previewPts !== null ? '+' + previewPts : '—'}
-                  </div>
-                  <div class="pts-badge-label">pts today</div>
-                </div>
               </div>
               <div id="profile-confirm-${p.id}"></div>
               <button class="save-person" style="margin-top:4px" onclick="askProfileConfirm('${p.id}')">Save Today's Value</button>`
