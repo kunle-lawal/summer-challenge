@@ -330,6 +330,39 @@ table.history tr:hover td { background: var(--surface2); }
 
 .history-section-title { font-family: 'Unbounded', sans-serif; font-size: 0.8rem; font-weight: 700; color: var(--muted2); margin: 1.5rem 0 0.75rem; letter-spacing: 0.04em; }
 
+.sheet-spinner {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(26,26,26,0.95);
+  border: 1px solid var(--border2);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.7);
+  z-index: 998;
+  font-size: 0.7rem;
+  color: var(--muted2);
+}
+.sheet-spinner-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--gold-dim);
+  border-top-color: var(--gold);
+  animation: spin 0.8s linear infinite;
+}
+.sheet-spinner-text {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 @media (max-width: 740px) {
   .person-card { grid-template-columns: 1fr 1fr; gap: 10px; }
   .person-card > .pts-col, .person-card > .save-col { grid-column: span 2; }
@@ -349,7 +382,7 @@ table.history tr:hover td { background: var(--surface2); }
   <span class="nav-date" id="navDate"></span>
   <div class="nav-tabs">
     <button class="tab-btn active"  onclick="switchTab('log',this)">Log Day</button>
-    <button class="tab-btn"         onclick="switchTab('profiles',this)">Profiles</button>
+    <button class="tab-btn"         onclick="switchTab('profiles',this)">Personal Goals</button>
     <button class="tab-btn"         onclick="switchTab('board',this)">Leaderboard</button>
     <button class="tab-btn"         onclick="switchTab('history',this)">History</button>
   </div>
@@ -365,7 +398,7 @@ table.history tr:hover td { background: var(--surface2); }
     </div>
     <div class="scoring-key">
       <div class="key-item"><span class="key-val pos">+1</span> Went to gym</div>
-      <div class="key-item"><span class="key-val neg">−1</span> Skipped gym</div>
+      <div class="key-item"><span class="key-val neg">0</span> Skipped gym</div>
       <div class="key-item"><span class="key-val pos">+1</span> Ate clean</div>
       <div class="key-item"><span class="key-val neg">−1</span> Ate junk</div>
       <div class="key-item"><span class="key-val pos">0–5</span> Steps (10k = 5pts)</div>
@@ -406,6 +439,11 @@ table.history tr:hover td { background: var(--surface2); }
     <div id="historyContent"></div>
   </div>
 
+</div>
+
+<div class="sheet-spinner" id="sheetSpinner">
+  <div class="sheet-spinner-dot"></div>
+  <span class="sheet-spinner-text">Syncing sheets…</span>
 </div>
 
 <div id="loadingOverlay" style="position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:999;">
@@ -484,7 +522,94 @@ async function postToSheets(action, data) {
   }
 }
 
-// ── DATA INIT ──────────────────────────────────────────────────────────────
+function setSheetSpinnerVisible(isVisible) {
+  const el = document.getElementById('sheetSpinner');
+  if (!el) return;
+  el.style.display = isVisible ? 'inline-flex' : 'none';
+}
+
+// ── DATA INIT / REFRESH ─────────────────────────────────────────────────────
+async function fetchSheetsIntoCache() {
+  if (!SCRIPT_URL || SCRIPT_URL === 'YOUR_APPS_SCRIPT_URL_HERE') {
+    return;
+  }
+
+  setSheetSpinnerVisible(true);
+
+  let data;
+  try {
+    const res  = await fetch(SCRIPT_URL, { redirect: 'follow' });
+    const text = await res.text();
+    data = JSON.parse(text);
+  } finally {
+    // Hide spinner regardless of success/failure to avoid it getting stuck on
+    setSheetSpinnerVisible(false);
+  }
+
+  if (data.error) throw new Error(data.error);
+
+  // Workout entries (normalize date so serial/ISO from Sheets never breaks week math)
+  cache.entries = (data.workout_log || []).map(r => ({
+    date:      normalizeDateToYYYYMMDD(r.date) || today(),
+    personId:  String(r.personId || ''),
+    time:      String(r.time || '—'),
+    gym:       String(r.gym || ''),
+    steps:     parseFloat(r.steps) || 0,
+    junk:      String(r.junk || ''),
+    pts:       parseFloat(r.pts) || 0,
+    lockedDay: r.lockedDay === true || r.lockedDay === 'TRUE'
+  })).filter(r => r.date && r.personId);
+
+  // Profiles
+  cache.profiles = {};
+  (data.profiles || []).forEach(r => {
+    if (!r.personId) return;
+    cache.profiles[r.personId] = {
+      goal:       (r.goal !== '' && r.goal != null) ? parseFloat(r.goal) : null,
+      startVal:   (r.startVal !== '' && r.startVal != null) ? parseFloat(r.startVal) : null,
+      direction:  String(r.direction || 'down'),
+      lockedGoal: r.lockedGoal === true || r.lockedGoal === 'TRUE',
+      goalResets: parseInt(r.goalResets) || 0,
+      entries:    []
+    };
+  });
+
+  // Merge goal_log into profiles
+  (data.goal_log || []).forEach(r => {
+    const pid = String(r.personId || '');
+    if (!cache.profiles[pid]) return;
+    cache.profiles[pid].entries.push({
+      date:      normalizeDateToYYYYMMDD(r.date) || String(r.date || '').slice(0, 10) || today(),
+      time:      String(r.time || '—'),
+      value:     parseFloat(r.value) || 0,
+      pts:       parseFloat(r.pts)   || 0,
+      lockedDay: r.lockedDay === true || r.lockedDay === 'TRUE'
+    });
+  });
+
+  // Passwords
+  cache.passwords = {};
+  (data.passwords || []).forEach(r => {
+    if (r.key) cache.passwords[String(r.key)] = String(r.password || '1234');
+  });
+
+  // Reset log
+  cache.resetLog = (data.reset_log || []).map(r => ({
+    date:              normalizeDateToYYYYMMDD(r.date) || String(r.date || '').slice(0, 10) || today(),
+    time:              String(r.time || '—'),
+    personId:          String(r.personId || ''),
+    type:              String(r.type || ''),
+    previousGoal:      r.previousGoal,
+    previousStart:     r.previousStart,
+    previousDirection: String(r.previousDirection || ''),
+    resetNumber:       parseInt(r.resetNumber) || 0,
+    goal:              r.goal,
+    startVal:          r.startVal,
+    direction:         String(r.direction || ''),
+    setNumber:         parseInt(r.setNumber) || 0
+  }));
+}
+
 async function initData() {
   if (!SCRIPT_URL || SCRIPT_URL === 'YOUR_APPS_SCRIPT_URL_HERE') {
     document.getElementById('loadingMsg').textContent = 'SCRIPT_URL not set — add your Apps Script URL to the HTML.';
@@ -492,73 +617,7 @@ async function initData() {
   }
 
   try {
-    const res  = await fetch(SCRIPT_URL, { redirect: 'follow' });
-    const text = await res.text();
-    const data = JSON.parse(text);
-
-    if (data.error) throw new Error(data.error);
-
-    // Workout entries (normalize date so serial/ISO from Sheets never breaks week math)
-    cache.entries = (data.workout_log || []).map(r => ({
-      date:      normalizeDateToYYYYMMDD(r.date) || today(),
-      personId:  String(r.personId || ''),
-      time:      String(r.time || '—'),
-      gym:       String(r.gym || ''),
-      steps:     parseFloat(r.steps) || 0,
-      junk:      String(r.junk || ''),
-      pts:       parseFloat(r.pts) || 0,
-      lockedDay: r.lockedDay === true || r.lockedDay === 'TRUE'
-    })).filter(r => r.date && r.personId);
-
-    // Profiles
-    cache.profiles = {};
-    (data.profiles || []).forEach(r => {
-      if (!r.personId) return;
-      cache.profiles[r.personId] = {
-        goal:       (r.goal !== '' && r.goal != null) ? parseFloat(r.goal) : null,
-        startVal:   (r.startVal !== '' && r.startVal != null) ? parseFloat(r.startVal) : null,
-        direction:  String(r.direction || 'down'),
-        lockedGoal: r.lockedGoal === true || r.lockedGoal === 'TRUE',
-        goalResets: parseInt(r.goalResets) || 0,
-        entries:    []
-      };
-    });
-
-    // Merge goal_log into profiles
-    (data.goal_log || []).forEach(r => {
-      const pid = String(r.personId || '');
-      if (!cache.profiles[pid]) return;
-      cache.profiles[pid].entries.push({
-        date:      normalizeDateToYYYYMMDD(r.date) || String(r.date || '').slice(0, 10) || today(),
-        time:      String(r.time || '—'),
-        value:     parseFloat(r.value) || 0,
-        pts:       parseFloat(r.pts)   || 0,
-        lockedDay: r.lockedDay === true || r.lockedDay === 'TRUE'
-      });
-    });
-
-    // Passwords
-    cache.passwords = {};
-    (data.passwords || []).forEach(r => {
-      if (r.key) cache.passwords[String(r.key)] = String(r.password || '1234');
-    });
-
-    // Reset log
-    cache.resetLog = (data.reset_log || []).map(r => ({
-      date:              normalizeDateToYYYYMMDD(r.date) || String(r.date || '').slice(0, 10) || today(),
-      time:              String(r.time || '—'),
-      personId:          String(r.personId || ''),
-      type:              String(r.type || ''),
-      previousGoal:      r.previousGoal,
-      previousStart:     r.previousStart,
-      previousDirection: String(r.previousDirection || ''),
-      resetNumber:       parseInt(r.resetNumber) || 0,
-      goal:              r.goal,
-      startVal:          r.startVal,
-      direction:         String(r.direction || ''),
-      setNumber:         parseInt(r.setNumber) || 0
-    }));
-
+    await fetchSheetsIntoCache();
   } catch(err) {
     console.error('Failed to load from Sheets:', err);
     document.getElementById('loadingMsg').textContent = 'Could not connect to Google Sheets. Check your SCRIPT_URL and try refreshing.';
@@ -623,7 +682,6 @@ function hasSavedToday(personId) {
 function calcPts(gym, steps, junk) {
   let pts = 0;
   if (gym === 'went' || gym === 'free-gym') pts += 1;
-  if (gym === 'skip') pts -= 1;
   if (junk === 'clean' || junk === 'free-junk') pts += 1;
   if (junk === 'ate') pts -= 1;
   const s = Math.max(0, parseFloat(steps) || 0);
@@ -690,14 +748,43 @@ function selectColor(field, val) {
 }
 
 // ── TABS ─────────────────────────────────────────────────────────────────
+let activeTab = 'log';
+
 function switchTab(tab, btn) {
+  activeTab = tab;
+
+  // Switch UI immediately using whatever is currently in cache
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   btn.classList.add('active');
+
+  // Render from current cache right away
+  if (tab === 'log')      buildForm();
   if (tab === 'board')    renderBoard();
   if (tab === 'history')  renderHistory();
   if (tab === 'profiles') renderProfiles();
+
+  // Then refresh from Sheets in the background and re-render non-log tabs
+  (async () => {
+    try {
+      await fetchSheetsIntoCache();
+    } catch (err) {
+      console.error('Tab refresh from Sheets failed:', err);
+      return;
+    }
+
+    // Only update if user is still on the same tab
+    if (activeTab === 'board') {
+      renderBoard();
+    } else if (activeTab === 'history') {
+      renderHistory();
+    } else if (activeTab === 'profiles') {
+      renderProfiles();
+    }
+    // We intentionally do NOT auto-build the log tab here to avoid
+    // blowing away any in-progress daily entries.
+  })();
 }
 
 // ── LOG FORM ─────────────────────────────────────────────────────────────
@@ -774,7 +861,7 @@ function renderCards() {
           onchange="onSelect('${p.id}','gym',this.value)" ${gymSelectDisabled?'disabled':''}>
           <option value="">— select —</option>
           <option value="went"     ${state.gym==='went'    ?'selected':''} ${gymWentDisabled ?'disabled':''}>${gymWentLabel}</option>
-          <option value="skip"     ${state.gym==='skip'    ?'selected':''}>✗ Skipped (−1)</option>
+          <option value="skip"     ${state.gym==='skip'    ?'selected':''}>✗ Skipped (0)</option>
           <option value="free-gym" ${state.gym==='free-gym'?'selected':''} ${gymFreeDisabled ?'disabled':''}>${gymFreeLabel}</option>
         </select>
         ${wl.gymMaxed ? `<div class="window-warn">4/4 gym days used this week</div>` : ''}
