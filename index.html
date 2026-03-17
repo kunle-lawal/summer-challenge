@@ -83,7 +83,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .person-name { font-family: 'Unbounded', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; color: var(--text); }
 .person-free { font-size: 0.6rem; color: var(--muted); margin-top: 4px; line-height: 1.7; }
 
-.field-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 5px; }
+.field-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 5px; display: flex; gap: 4px; }
 
 /* DROPDOWNS */
 select.field-select {
@@ -110,7 +110,7 @@ input[type="number"]:focus, input[type="text"]:focus { border-color: var(--gold)
 input:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .steps-wrap { display: flex; flex-direction: column; }
-.steps-hint { font-size: 0.58rem; color: var(--muted); margin-top: 3px; }
+.steps-hint { font-size: 0.58rem; color: var(--muted); }
 
 /* DAILY PTS */
 .pts-col { text-align: right; }
@@ -722,12 +722,17 @@ function renderCards() {
     const junkFreeLeft = FREE_LIMIT - fc.junk;
     const state        = formState[p.id];
     const alreadySaved = hasSavedToday(p.id);
-    const hasValues    = state.gym && state.junk;
-    const pts          = hasValues ? calcPts(state.gym, state.steps, state.junk) : null;
 
+    // Workout points
+    const savedEntry   = entries.find(e => e.date === today() && e.personId === p.id) || null;
+    const hasValues    = state.gym && state.junk;
+    const livePts      = hasValues ? calcPts(state.gym, state.steps, state.junk) : null;
+    const dayWorkoutPts = alreadySaved && savedEntry ? savedEntry.pts : livePts;
+
+    // Goal points for today
     const todayProfile = getTodayProfileEntry(p.id);
     const profilePts   = todayProfile ? todayProfile.pts : null;
-    const totalToday   = (pts || 0) + (profilePts || 0);
+    const totalToday   = (dayWorkoutPts || 0) + (profilePts || 0);
 
     // Window limits
     const wl = getWindowLimits(entries, p.id);
@@ -776,11 +781,10 @@ function renderCards() {
       </div>
 
       <div class="steps-wrap">
-        <div class="field-label">Steps</div>
+        <div class="field-label">Steps <div class="steps-hint">10k = 5pts</div></div>
         <input type="number" min="0" max="99999" placeholder="0"
           value="${state.steps}" oninput="onSteps('${p.id}',this.value)"
           ${alreadySaved?'disabled':''} />
-        <div class="steps-hint">10,000 steps = 5 pts</div>
       </div>
 
       <div>
@@ -796,10 +800,10 @@ function renderCards() {
       </div>
 
       <div class="pts-col">
-        <div class="daily-pts ${alreadySaved?'pos':pts!==null?ptsClass(pts):'zero'}" id="pts-${p.id}">
-          ${alreadySaved ? fmtPts(totalToday) : pts!==null ? fmtPts(pts) : '—'}
+        <div class="daily-pts ${dayWorkoutPts!==null && dayWorkoutPts!==undefined ? ptsClass(dayWorkoutPts) : 'zero'}" id="pts-${p.id}">
+          ${dayWorkoutPts!==null && dayWorkoutPts!==undefined ? fmtPts(dayWorkoutPts) : '—'}
         </div>
-        <div class="daily-pts-label">${alreadySaved ? 'saved' : 'pts today'}</div>
+        <div class="daily-pts-label">${alreadySaved ? 'saved workout pts' : 'pts today'}</div>
       </div>
 
       <div class="save-col">
@@ -1230,6 +1234,7 @@ function renderBoard() {
   const entries  = loadData();
   const profiles = loadProfiles();
   const ranked   = getTotals(entries, profiles);
+
   const freeCounts = getFreeCounts(entries);
 
   const podiumEl   = document.getElementById('podium');
