@@ -6,6 +6,7 @@ const DEFAULT_PEOPLE: readonly Person[] = [
   { id: 'scar', name: 'Scar' },
   { id: 'marcus', name: 'Marcus' },
   { id: 'will', name: 'Will' },
+  { id: 'sandro', name: 'Sandro' },
 ];
 
 function parsePeopleJson(raw: string | undefined): Person[] {
