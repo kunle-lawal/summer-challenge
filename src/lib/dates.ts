@@ -65,6 +65,13 @@ export function dayIndex(date: string, startDate: string): number {
   return Math.floor((b.getTime() - a.getTime()) / msPerDay);
 }
 
+/** Earlier of two YYYY-MM-DD strings (lexicographic compare). */
+export function minYYYYMMDD(a: string, b: string): string {
+  const as = a.slice(0, 10);
+  const bs = b.slice(0, 10);
+  return as <= bs ? as : bs;
+}
+
 export function windowOf(date: string, startDate: string): number {
   return Math.floor(dayIndex(date, startDate) / 7);
 }

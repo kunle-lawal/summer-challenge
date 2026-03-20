@@ -1,6 +1,6 @@
-import type { PersonId, ProfileData, RankedPlayer, WorkoutEntry } from '../types';
-import { CHALLENGE_START, PEOPLE, PROFILE_MAX_PTS } from './config';
-import { today, windowOf } from './dates';
+import type { GoalDayEntry, PersonId, ProfileData, RankedPlayer, WorkoutEntry } from '../types';
+import { CHALLENGE_END, CHALLENGE_START, PEOPLE, PROFILE_MAX_PTS } from './config';
+import { dayIndex, minYYYYMMDD, today, windowOf } from './dates';
 
 export function calcPts(gym: string, steps: string | number, junk: string): number {
   let pts = 0;
@@ -29,6 +29,69 @@ export function calcProfilePts(
       ? (start - curr) / range
       : (curr - start) / range;
   return Math.round(Math.min(1, Math.max(0, progress)) * PROFILE_MAX_PTS * 10) / 10;
+}
+
+/**
+ * Calendar days in [challengeStart, throughInclusive] with no goal log (1 pt off each).
+ * `entries` should be only logs on or before `throughInclusive` when simulating a past day.
+ */
+export function missedGoalLogDays(
+  entries: { date: string }[],
+  challengeStart: string,
+  throughInclusive: string,
+): number {
+  const start = challengeStart.slice(0, 10);
+  const end = throughInclusive.slice(0, 10);
+  if (end < start) return 0;
+  const n = dayIndex(end, start) + 1;
+  const logged = new Set<string>();
+  for (const e of entries) {
+    const d = e.date.slice(0, 10);
+    if (d >= start && d <= end) logged.add(d);
+  }
+  return Math.max(0, n - logged.size);
+}
+
+/**
+ * Personal goal pts for one logged value on `asOfDate`: progress (0–30) minus missed-day
+ * penalties through min(asOfDate, CHALLENGE_END). Uses current profile goal/start/direction.
+ */
+export function calcPersonalGoalPtsForDay(
+  profile: ProfileData,
+  entryValue: number,
+  asOfDate: string,
+): number {
+  if (!profile.lockedGoal || profile.goal == null || profile.startVal == null) return 0;
+  const progress = calcProfilePts(
+    entryValue,
+    profile.goal,
+    profile.startVal,
+    profile.direction || 'down',
+  );
+  const entriesUpTo = (profile.entries ?? []).filter(
+    (e) => e.date.slice(0, 10) <= asOfDate.slice(0, 10),
+  );
+  const cap = minYYYYMMDD(asOfDate, CHALLENGE_END);
+  const missed = missedGoalLogDays(entriesUpTo, CHALLENGE_START, cap);
+  return Math.round(Math.max(0, progress - missed) * 10) / 10;
+}
+
+function pickLatestGoalEntry(entries: GoalDayEntry[]): GoalDayEntry | null {
+  if (entries.length === 0) return null;
+  return [...entries].sort((a, b) => {
+    const dc = b.date.slice(0, 10).localeCompare(a.date.slice(0, 10));
+    if (dc !== 0) return dc;
+    return String(b.time).localeCompare(String(a.time));
+  })[0]!;
+}
+
+/** Single current personal-goal score (latest logged value; not a sum of historical rows). */
+export function calcPersonalGoalPts(profile: ProfileData | undefined): number {
+  if (!profile?.lockedGoal || profile.goal == null || profile.startVal == null) return 0;
+  const latest = pickLatestGoalEntry(profile.entries ?? []);
+  const value = latest != null ? latest.value : profile.startVal;
+  const through = minYYYYMMDD(today(), CHALLENGE_END);
+  return calcPersonalGoalPtsForDay(profile, value, through);
 }
 
 export function getFreeCounts(entries: WorkoutRecord[]): Record<
@@ -103,11 +166,10 @@ export function getTotals(
 
   for (const p of PEOPLE) {
     const pData = profiles[p.id];
-    if (pData?.entries) {
-      const profileTotal = pData.entries.reduce((sum, e) => sum + (e.pts || 0), 0);
-      const rounded = Math.round(profileTotal * 10) / 10;
-      totals[p.id]!.profilePts = rounded;
-      totals[p.id]!.pts = Math.round((totals[p.id]!.pts + rounded) * 10) / 10;
+    if (pData) {
+      const profilePts = calcPersonalGoalPts(pData);
+      totals[p.id]!.profilePts = profilePts;
+      totals[p.id]!.pts = Math.round((totals[p.id]!.pts + profilePts) * 10) / 10;
     }
   }
 

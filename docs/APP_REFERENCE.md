@@ -43,7 +43,7 @@ summer-challenge/
     ├── lib/                # Pure/config + I/O helpers
     ├── theme/              # Tokens, ThemeProvider, global reset
     ├── context/            # ChallengeProvider + useChallenge
-    ├── components/         # layout/, log/, profile/ (+ personalGoalHorizontalStyles)
+    ├── components/         # layout/, log/, history/, profile/ (+ personalGoalHorizontalStyles)
     └── pages/                # Route-level screens (+ profilesStyles for goal UI)
 ```
 
@@ -140,6 +140,7 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 |-----------|------|------|
 | `PersonLogCard` | [`PersonLogCard.tsx`](../src/components/log/PersonLogCard.tsx) | One person’s gym/steps/junk, points, save + confirm bar; styled-components colocated here. |
 | `PersonalGoalPanel` | [`PersonalGoalPanel.tsx`](../src/components/profile/PersonalGoalPanel.tsx) | Single-person personal goal UI in a **horizontal grid** (same column pattern as **`PersonLogCard`**); uses [`personalGoalHorizontalStyles.ts`](../src/components/profile/personalGoalHorizontalStyles.ts) + unlock/confirm bits from **`profilesStyles.ts`**. |
+| `HistoryEntriesTable` | [`HistoryEntriesTable.tsx`](../src/components/history/HistoryEntriesTable.tsx) | Shared history table (date, time, optional player column, type pills, details, pts). Optional **footer** (`footerProfilePts`): workouts sum + current personal-goal total. **`strikeNonLatestGoalPts`**: used on **`LogDayPage`** to strike through older goal rows. **`HistoryPage`** omits both. |
 
 ---
 
@@ -154,7 +155,7 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 - **Requires:** `person` from **`useSelectedPerson`** (enforced by **`RequirePerson`** in `App.tsx`).
 - **Reads:** `entries`, `profiles`, `updateCache`, `postToSheets`, `clearGeneration` from context.
 - **Local state:** one `LogFormRow` (`gym`, `steps`, `junk`), confirm flag, validation message — for the **selected person only**.
-- **Renders:** that person’s **`PersonLogCard`**, then **`PersonalGoalPanel`** (personal goal no longer has its own route).
+- **Renders:** that person’s **`PersonLogCard`**, then **`PersonalGoalPanel`** (personal goal no longer has its own route), then **“Your past logs”**: **`buildHistoryRows(entries, profiles, [], { personId })`** (workouts + personal goal dailies only; **no** `resetLog` / goal set–reset rows) + **`HistoryEntriesTable`** with **`footerProfilePts={calcPersonalGoalPts(…)}`**, **`strikeNonLatestGoalPts`**, sorted newest first.
 - **Resets form** when `pathname === '/log'`, when **`clearGeneration`** changes, or when **`person.id`** changes.
 - **Save:** Builds `WorkoutEntry`, merges into `entries` via `updateCache`, `postToSheets('saveWorkout', entry)`.
 
@@ -169,7 +170,7 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 
 ### `HistoryPage` — [`src/pages/HistoryPage.tsx`](../src/pages/HistoryPage.tsx)
 
-- Builds rows via **`buildHistoryRows`** (`lib/history.ts`), sorts like legacy (date desc, then time).
+- Builds rows via **`buildHistoryRows`** (`lib/history.ts`), sorts like legacy (date desc, then time); table UI is **`HistoryEntriesTable`** with the player column visible.
 - **Clear all:** password `checkPassword('__admin', …)`, then `clearAllLocal()` + `postToSheets('clearAll', {})`.
 
 ---
@@ -178,12 +179,12 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 
 | Module | File | Responsibility |
 |--------|------|------------------|
-| Config | [`config.ts`](../src/lib/config.ts) | Reads **`import.meta.env`**, `PEOPLE` JSON parse with defaults, `SCRIPT_URL`, `CHALLENGE_START`, goal-reset date bounds, `FREE_LIMIT`, `PROFILE_MAX_PTS`, `isScriptConfigured()`. |
+| Config | [`config.ts`](../src/lib/config.ts) | Reads **`import.meta.env`**, `PEOPLE` JSON parse with defaults, `SCRIPT_URL`, **`CHALLENGE_START`** / **`CHALLENGE_END`** (personal-goal missed-day window), goal-reset date bounds, `FREE_LIMIT`, `PROFILE_MAX_PTS`, `isScriptConfigured()`. |
 | Selected person | [`selectedPersonStorage.ts`](../src/lib/selectedPersonStorage.ts) | **`localStorage`** read/write for the chosen **`PEOPLE[].id`**; **`getStoredPerson()`** for overlays / welcome line. |
-| Dates | [`dates.ts`](../src/lib/dates.ts) | `today`, `todayDisplay`, `normalizeDateToYYYYMMDD` (Sheets serial/ISO), `dayIndex` / `windowOf`, history display formatters. |
-| Scoring | [`scoring.ts`](../src/lib/scoring.ts) | `calcPts`, `calcProfilePts`, `getWindowLimits`, `getFreeCounts`, `getTotals`, `initials`, `fmtPts`, `ptsClass`, `stepsPtsFromEntry`. |
+| Dates | [`dates.ts`](../src/lib/dates.ts) | `today`, `todayDisplay`, `normalizeDateToYYYYMMDD` (Sheets serial/ISO), `dayIndex` / `windowOf`, **`minYYYYMMDD`**, history display formatters. |
+| Scoring | [`scoring.ts`](../src/lib/scoring.ts) | `calcPts`, `calcProfilePts`, **`missedGoalLogDays`**, **`calcPersonalGoalPtsForDay`**, **`calcPersonalGoalPts`** (single current personal score = progress toward goal up to 30, minus 1 pt per challenge day without a goal log through **`min(today, CHALLENGE_END)`**), `getWindowLimits`, `getFreeCounts`, **`getTotals`** (workout sum per person + **one** `calcPersonalGoalPts`, not a sum of goal-log rows), `initials`, `fmtPts`, `ptsClass`, `stepsPtsFromEntry`. |
 | Sheets I/O | [`sheets.ts`](../src/lib/sheets.ts) | `fetchSheetsJson`, `postToSheets`, `cacheFromPayload`, normalizers for workout/profile/goal/password/reset rows → **`ChallengeCache`**. |
-| History rows | [`history.ts`](../src/lib/history.ts) | `buildHistoryRows` → discriminated **`HistoryDisplayRow`** for the History table (workout vs goal vs goal_set vs goal_reset). |
+| History rows | [`history.ts`](../src/lib/history.ts) | `buildHistoryRows(entries, profiles, resetLog, opts?)` → discriminated **`HistoryDisplayRow`**. Optional **`opts.personId`** limits rows to one user (used on **`LogDayPage`**). Goal rows use **`calcPersonalGoalPtsForDay`** (current profile) for displayed pts. **`latestGoalRowIndex`** for log-page strike-through. |
 
 **Reason:** Keeps components thin and testable; scoring/date rules stay identical to legacy behavior.
 
@@ -208,6 +209,7 @@ Add new backend fields here first, then update **`sheets.ts`** normalizers and a
 |----------|---------|--------|
 | `VITE_SCRIPT_URL` | `lib/config.ts` | Required for live data; empty or placeholder → init error overlay. |
 | `VITE_CHALLENGE_START` | `lib/config.ts` | Week window math for gym/clean caps. |
+| `VITE_CHALLENGE_END` | `lib/config.ts` | Inclusive end date (default **2026-04-17**); personal-goal missed-day penalties stop here. |
 | `VITE_PEOPLE` | `lib/config.ts` | JSON array of `{ id, name }`; invalid/missing → built-in default roster. |
 | `VITE_GOAL_RESET_OPEN` / `VITE_GOAL_RESET_CLOSE` | `lib/config.ts` | Unlock-goal reset allowed only inside this window. |
 

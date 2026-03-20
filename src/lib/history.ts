@@ -1,7 +1,7 @@
 import type { GoalDayEntry, ProfileData, ResetLogEntry, WorkoutEntry } from '../types';
 import { PEOPLE } from './config';
 import { formatHistoryDate, formatHistoryTime } from './dates';
-import { ptsClass, stepsPtsFromEntry } from './scoring';
+import { calcPersonalGoalPtsForDay, ptsClass, stepsPtsFromEntry } from './scoring';
 import type { PtsTone } from './scoring';
 
 export type HistoryDisplayRow =
@@ -77,10 +77,13 @@ export function buildHistoryRows(
   entries: WorkoutEntry[],
   profiles: Record<string, ProfileData | undefined>,
   resetLog: ResetLogEntry[],
+  opts?: { personId?: string },
 ): HistoryDisplayRow[] {
   const rows: HistoryDisplayRow[] = [];
+  const pid = opts?.personId;
 
   for (const e of entries) {
+    if (pid && e.personId !== pid) continue;
     const name = PEOPLE.find((p) => p.id === e.personId)?.name ?? e.personId;
     const sp = stepsPtsFromEntry(e.steps);
     rows.push({
@@ -101,15 +104,17 @@ export function buildHistoryRows(
   }
 
   for (const p of PEOPLE) {
+    if (pid && p.id !== pid) continue;
     const pData = profiles[p.id];
     if (!pData?.entries) continue;
     const dirLabel = pData.direction === 'up' ? 'going up' : 'going down';
     for (const e of pData.entries) {
-      rows.push(rowFromGoalEntry(e, p.name, pData.goal, dirLabel));
+      rows.push(rowFromGoalEntry(e, p.name, pData, dirLabel));
     }
   }
 
   for (const e of resetLog) {
+    if (pid && e.personId !== pid) continue;
     const name = PEOPLE.find((p) => p.id === e.personId)?.name ?? e.personId;
     if (e.type === 'goal_set') {
       rows.push({
@@ -154,9 +159,10 @@ export function buildHistoryRows(
 function rowFromGoalEntry(
   e: GoalDayEntry,
   name: string,
-  goal: number | null,
+  profile: ProfileData,
   dirLabel: string,
 ): HistoryDisplayRow {
+  const pts = calcPersonalGoalPtsForDay(profile, e.value, e.date);
   return {
     kind: 'goal',
     sortDate: e.date,
@@ -166,8 +172,27 @@ function rowFromGoalEntry(
     name,
     pill: 'goal',
     value: e.value,
-    goal,
+    goal: profile.goal,
     dirLabel,
-    pts: e.pts,
+    pts,
   };
+}
+
+/** Index of the chronologically latest goal row in display order (any mix of row kinds). */
+export function latestGoalRowIndex(rows: HistoryDisplayRow[]): number | null {
+  let bestIdx: number | null = null;
+  let bestDate = '';
+  let bestTime = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]!;
+    if (r.kind !== 'goal') continue;
+    const d = r.sortDate.slice(0, 10);
+    const t = parseTime(r.sortTime);
+    if (d > bestDate || (d === bestDate && t > bestTime)) {
+      bestDate = d;
+      bestTime = t;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
 }

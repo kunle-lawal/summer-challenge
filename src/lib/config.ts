@@ -35,6 +35,10 @@ export const SCRIPT_URL: string = import.meta.env.VITE_SCRIPT_URL ?? '';
 export const CHALLENGE_START: string =
   import.meta.env.VITE_CHALLENGE_START?.trim() || '2026-03-17';
 
+/** Inclusive end date for challenge (personal-goal missed-day penalties stop here). */
+export const CHALLENGE_END: string =
+  import.meta.env.VITE_CHALLENGE_END?.trim() || '2026-04-17';
+
 export const PEOPLE: Person[] = parsePeopleJson(import.meta.env.VITE_PEOPLE);
 
 export const GOAL_RESET_OPEN: Date = new Date(
