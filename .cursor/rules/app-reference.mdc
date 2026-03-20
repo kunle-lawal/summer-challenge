@@ -1,0 +1,14 @@
+---
+description: Reference docs/APP_REFERENCE.md for summer-challenge work; keep it in sync when behavior changes
+alwaysApply: true
+---
+
+# Summer Challenge — app reference
+
+Before planning or implementing **any** change to this repo:
+
+1. **Read** `docs/APP_REFERENCE.md` at the repo root (architecture, routes, context API, `src/lib/`, env, Netlify, backend contract). Use it to locate files and avoid rediscovering structure from scratch.
+
+2. **If the change affects how the app works** — routing, data flow, `ChallengeProvider` / cache, env vars, Sheets actions, scoring, theme tokens, build/deploy, or documented conventions — **update `docs/APP_REFERENCE.md` in the same change** so it stays the single source of truth.
+
+Purely cosmetic or copy tweaks that do not alter behavior do not require doc updates unless they change UI structure described in the doc (e.g. new tab).
