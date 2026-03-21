@@ -92,6 +92,31 @@ export function clampWorkoutLogDate(raw: string): string {
   return s;
 }
 
+/** Oldest → newest calendar days allowed for workout logging (length = WORKOUT_LOG_LOOKBACK_DAYS + 1). */
+export function workoutLogSelectableDates(): string[] {
+  const { minDate, maxDate } = workoutLogDateBounds();
+  const out: string[] = [];
+  const cur = new Date(minDate.slice(0, 10) + 'T12:00:00');
+  const end = new Date(maxDate.slice(0, 10) + 'T12:00:00');
+  if (Number.isNaN(cur.getTime()) || Number.isNaN(end.getTime())) return [maxDate];
+  while (cur <= end) {
+    out.push(toLocalYMD(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+/** Compact label for log-date chips (e.g. "Wed, Mar 19"). */
+export function formatLogDateChipLabel(ymd: string): string {
+  const d = new Date(String(ymd).slice(0, 10) + 'T12:00:00');
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 function toLocalYMD(d: Date): string {
   return (
     d.getFullYear() +

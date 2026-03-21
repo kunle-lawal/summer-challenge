@@ -12,8 +12,9 @@ import { useSelectedPerson } from "../context/SelectedPersonContext";
 import {
 	clampWorkoutLogDate,
 	formatDateDisplayYMD,
+	formatLogDateChipLabel,
 	today,
-	workoutLogDateBounds,
+	workoutLogSelectableDates,
 } from "../lib/dates";
 import { buildHistoryRows } from "../lib/history";
 import { calcPersonalGoalPts, calcPts } from "../lib/scoring";
@@ -94,34 +95,75 @@ const HistoryBlock = styled.div`
 
 const LogDateRow = styled.div`
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	gap: 12px;
 	flex-wrap: wrap;
 	margin-bottom: 1.25rem;
 `;
 
-const LogDateLabel = styled.label`
+const LogDateLabel = styled.div`
 	font-size: 0.72rem;
 	font-weight: 600;
 	color: ${({ theme }) => theme.color.muted2};
-	display: flex;
-	align-items: center;
-	gap: 8px;
+	padding-top: 10px;
+	flex-shrink: 0;
 `;
 
-const LogDateInput = styled.input`
-	background: ${({ theme }) => theme.color.surface2};
-	border: 1px solid ${({ theme }) => theme.color.border2};
-	border-radius: ${({ theme }) => theme.radii.md};
-	padding: 8px 12px;
-	font-family: ${({ theme }) => theme.font.body};
-	font-size: 0.85rem;
-	color: ${({ theme }) => theme.color.text};
-	outline: none;
+const LogDateChips = styled.div`
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	flex: 1;
+	min-width: 0;
+`;
 
-	&:focus {
-		border-color: ${({ theme }) => theme.color.gold};
+const DateChip = styled.button<{ $selected: boolean }>`
+	flex: 1;
+	min-width: 76px;
+	max-width: 140px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	padding: 10px 8px;
+	border-radius: ${({ theme }) => theme.radii.md};
+	border: 1px solid
+		${({ theme, $selected }) =>
+			$selected ? theme.color.gold : "rgba(232, 160, 32, 0.38)"};
+	background: ${({ $selected }) =>
+		$selected ? "rgba(232, 160, 32, 0.22)" : "rgba(232, 160, 32, 0.08)"};
+	cursor: pointer;
+	font-family: ${({ theme }) => theme.font.body};
+	transition:
+		border-color 0.15s,
+		background 0.15s;
+
+	&:focus-visible {
+		outline: 2px solid ${({ theme }) => theme.color.gold};
+		outline-offset: 2px;
 	}
+
+	&:hover {
+		border-color: ${({ theme }) => theme.color.gold};
+		background: ${({ $selected }) =>
+			$selected ? "rgba(232, 160, 32, 0.24)" : "rgba(232, 160, 32, 0.14)"};
+	}
+`;
+
+const DateChipPrimary = styled.span`
+	font-size: 0.7rem;
+	font-weight: 700;
+	line-height: 1.2;
+	text-align: center;
+	color: ${({ theme }) => theme.color.text};
+`;
+
+const DateChipSub = styled.span`
+	font-size: 0.58rem;
+	line-height: 1.2;
+	text-align: center;
+	color: ${({ theme }) => theme.color.muted2};
 `;
 
 function emptyRow(): LogFormRow {
@@ -139,13 +181,13 @@ export function LogDayPage() {
 	const [logDate, setLogDate] = useState(today);
 
 	const personId = person?.id ?? "";
-	const { minDate, maxDate } = workoutLogDateBounds();
+
+	/** Newest first (today left); recomputed each render so the window stays correct after midnight. */
+	const logDateChipOrder = [...workoutLogSelectableDates()];
 
 	const myHistoryRows = useMemo(
 		() =>
-			personId
-				? buildHistoryRows(entries, profiles, [], { personId })
-				: [],
+			personId ? buildHistoryRows(entries, profiles, [], { personId }) : [],
 		[entries, personId, profiles],
 	);
 
@@ -259,15 +301,32 @@ export function LogDayPage() {
 			</SectionHeader>
 
 			<LogDateRow>
-				<LogDateLabel htmlFor="log-workout-date">Day</LogDateLabel>
-				<LogDateInput
-					id="log-workout-date"
-					type="date"
-					min={minDate}
-					max={maxDate}
-					value={logDate}
-					onChange={(e) => setLogDate(clampWorkoutLogDate(e.target.value))}
-				/>
+				<LogDateChips
+					role="group"
+					aria-label="Choose day to log (today and the previous 3 days)"
+				>
+					{logDateChipOrder.map((d) => {
+						const isCalToday = d === today();
+						const selected = d === logDate;
+						return (
+							<DateChip
+								key={d}
+								type="button"
+								$selected={selected}
+								aria-pressed={selected}
+								aria-label={`Log ${formatDateDisplayYMD(d)}`}
+								onClick={() => setLogDate(clampWorkoutLogDate(d))}
+							>
+								<DateChipPrimary>
+									{isCalToday ? "Today" : formatLogDateChipLabel(d)}
+								</DateChipPrimary>
+								{isCalToday ? (
+									<DateChipSub>{formatLogDateChipLabel(d)}</DateChipSub>
+								) : null}
+							</DateChip>
+						);
+					})}
+				</LogDateChips>
 			</LogDateRow>
 
 			<ScoringKey>
@@ -311,7 +370,10 @@ export function LogDayPage() {
 			</PersonCards>
 
 			<GoalBlock>
-				<PersonalGoalPanel person={person} logDate={logDate} />
+				<PersonalGoalPanel
+					person={person}
+					logDate={logDate}
+				/>
 			</GoalBlock>
 
 			<HistoryBlock>
