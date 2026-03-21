@@ -101,14 +101,6 @@ const LogDateRow = styled.div`
 	margin-bottom: 1.25rem;
 `;
 
-const LogDateLabel = styled.div`
-	font-size: 0.72rem;
-	font-weight: 600;
-	color: ${({ theme }) => theme.color.muted2};
-	padding-top: 10px;
-	flex-shrink: 0;
-`;
-
 const LogDateChips = styled.div`
 	display: flex;
 	gap: 8px;
