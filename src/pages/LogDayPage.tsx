@@ -9,7 +9,12 @@ import {
 import { PersonalGoalPanel } from "../components/profile/PersonalGoalPanel";
 import { useChallenge } from "../context/ChallengeContext";
 import { useSelectedPerson } from "../context/SelectedPersonContext";
-import { today, todayDisplay } from "../lib/dates";
+import {
+	clampWorkoutLogDate,
+	formatDateDisplayYMD,
+	today,
+	workoutLogDateBounds,
+} from "../lib/dates";
 import { buildHistoryRows } from "../lib/history";
 import { calcPersonalGoalPts, calcPts } from "../lib/scoring";
 import type { WorkoutEntry } from "../types";
@@ -87,6 +92,38 @@ const HistoryBlock = styled.div`
 	border-top: 1px solid ${({ theme }) => theme.color.border};
 `;
 
+const LogDateRow = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-bottom: 1.25rem;
+`;
+
+const LogDateLabel = styled.label`
+	font-size: 0.72rem;
+	font-weight: 600;
+	color: ${({ theme }) => theme.color.muted2};
+	display: flex;
+	align-items: center;
+	gap: 8px;
+`;
+
+const LogDateInput = styled.input`
+	background: ${({ theme }) => theme.color.surface2};
+	border: 1px solid ${({ theme }) => theme.color.border2};
+	border-radius: ${({ theme }) => theme.radii.md};
+	padding: 8px 12px;
+	font-family: ${({ theme }) => theme.font.body};
+	font-size: 0.85rem;
+	color: ${({ theme }) => theme.color.text};
+	outline: none;
+
+	&:focus {
+		border-color: ${({ theme }) => theme.color.gold};
+	}
+`;
+
 function emptyRow(): LogFormRow {
 	return { gym: "", steps: "", junk: "" };
 }
@@ -99,8 +136,10 @@ export function LogDayPage() {
 	const [formRow, setFormRow] = useState<LogFormRow>(emptyRow);
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const [validation, setValidation] = useState<string | null>(null);
+	const [logDate, setLogDate] = useState(today);
 
 	const personId = person?.id ?? "";
+	const { minDate, maxDate } = workoutLogDateBounds();
 
 	const myHistoryRows = useMemo(
 		() =>
@@ -117,23 +156,38 @@ export function LogDayPage() {
 
 	useEffect(() => {
 		if (pathname !== "/log") return;
-		setFormRow(emptyRow());
-		setConfirmOpen(false);
-		setValidation(null);
+		setLogDate(today());
 	}, [pathname]);
 
 	useEffect(() => {
 		if (clearGeneration === 0) return;
-		setFormRow(emptyRow());
-		setConfirmOpen(false);
-		setValidation(null);
+		setLogDate(today());
 	}, [clearGeneration]);
 
 	useEffect(() => {
-		setFormRow(emptyRow());
+		setLogDate(today());
+	}, [personId]);
+
+	useEffect(() => {
+		if (!personId) return;
+		const saved = entries.find(
+			(e) => e.personId === personId && e.date === logDate,
+		);
+		if (saved) {
+			setFormRow({
+				gym: saved.gym,
+				steps: saved.steps === 0 ? "" : String(saved.steps),
+				junk: saved.junk,
+			});
+		} else {
+			setFormRow(emptyRow());
+		}
+	}, [logDate, personId, entries, clearGeneration]);
+
+	useEffect(() => {
 		setConfirmOpen(false);
 		setValidation(null);
-	}, [personId]);
+	}, [logDate, personId, clearGeneration, pathname]);
 
 	const setRow = useCallback((row: LogFormRow) => {
 		setFormRow(row);
@@ -160,7 +214,7 @@ export function LogDayPage() {
 
 	const confirmSave = useCallback(() => {
 		if (!personId) return;
-		const date = today();
+		const date = logDate;
 		const time = new Date().toLocaleTimeString("en-US", {
 			hour: "numeric",
 			minute: "2-digit",
@@ -191,18 +245,30 @@ export function LogDayPage() {
 
 		void postToSheets("saveWorkout", entry);
 		setConfirmOpen(false);
-	}, [formRow, personId, postToSheets, updateCache]);
+	}, [formRow, logDate, personId, postToSheets, updateCache]);
 
 	if (!person) return null;
 
 	return (
 		<div>
 			<SectionHeader>
-				<SectionTitle>Today's Log</SectionTitle>
+				<SectionTitle>Workout log</SectionTitle>
 				<SectionSub style={{ fontSize: "1rem" }}>
-					{person.name} · {todayDisplay()}
+					{person.name} · {formatDateDisplayYMD(logDate)}
 				</SectionSub>
 			</SectionHeader>
+
+			<LogDateRow>
+				<LogDateLabel htmlFor="log-workout-date">Day</LogDateLabel>
+				<LogDateInput
+					id="log-workout-date"
+					type="date"
+					min={minDate}
+					max={maxDate}
+					value={logDate}
+					onChange={(e) => setLogDate(clampWorkoutLogDate(e.target.value))}
+				/>
+			</LogDateRow>
 
 			<ScoringKey>
 				<KeyItem>
@@ -231,6 +297,7 @@ export function LogDayPage() {
 			<PersonCards>
 				<PersonLogCard
 					person={person}
+					logDate={logDate}
 					formRow={formRow}
 					entries={entries}
 					profiles={profiles}
@@ -244,7 +311,7 @@ export function LogDayPage() {
 			</PersonCards>
 
 			<GoalBlock>
-				<PersonalGoalPanel person={person} />
+				<PersonalGoalPanel person={person} logDate={logDate} />
 			</GoalBlock>
 
 			<HistoryBlock>

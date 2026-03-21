@@ -32,7 +32,14 @@ const emptyInputs: ProfileInputs = {
 	valueInput: "",
 };
 
-export function PersonalGoalPanel({ person }: { person: Person }) {
+export function PersonalGoalPanel({
+	person,
+	logDate,
+}: {
+	person: Person;
+	/** YYYY-MM-DD — same workout log day as `LogDayPage` (today or a recent past day). */
+	logDate: string;
+}) {
 	const {
 		profiles,
 		updateCache,
@@ -68,6 +75,12 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 		setConfirmValue(false);
 		setValueErr("");
 	}, [personId]);
+
+	useEffect(() => {
+		setInputs((s) => ({ ...s, valueInput: "" }));
+		setConfirmValue(false);
+		setValueErr("");
+	}, [logDate]);
 
 	const pData = useCallback(
 		(): ProfileData =>
@@ -234,7 +247,7 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 		const pd = profiles[personId];
 		if (!pd?.lockedGoal) return;
 
-		const date = today();
+		const date = logDate.slice(0, 10);
 		const time = nowTime();
 		const list = pd.entries ?? [];
 		const idx = list.findIndex((e) => e.date === date);
@@ -274,7 +287,7 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 
 		setInputs((s) => ({ ...s, valueInput: "" }));
 		setConfirmValue(false);
-	}, [inputs.valueInput, personId, postToSheets, profiles, updateCache]);
+	}, [inputs.valueInput, logDate, personId, postToSheets, profiles, updateCache]);
 
 	const data = pData();
 	const inp = inputs;
@@ -282,26 +295,29 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 	const goal = data.goal;
 	const startVal = data.startVal;
 	const direction = data.direction || "down";
-	const todayStr = today();
+	const dayStr = logDate.slice(0, 10);
+	const isCalendarToday = dayStr === today();
 	const entries = data.entries ?? [];
-	const todayEntry = entries.find((e) => e.date === todayStr) ?? null;
+	const dayEntry = entries.find((e) => e.date === dayStr) ?? null;
 	const prevEntry =
 		entries
-			.filter((e) => e.date < todayStr)
+			.filter((e) => e.date < dayStr)
 			.sort((a, b) => {
 				const dc = b.date.localeCompare(a.date);
 				if (dc !== 0) return dc;
 				return String(b.time).localeCompare(String(a.time));
 			})[0] ?? null;
 
-	const lastInputedEntry = todayEntry ?? prevEntry;
+	const lastInputedEntry = dayEntry ?? prevEntry;
 	const lastInputedValue = lastInputedEntry?.value ?? startVal ?? null;
 
 	let progressPct = 0;
 	let currentPts: number | null = null;
 	let rawProgressForComplete: number | null = null;
 	if (goalLocked && goal != null && startVal != null) {
-		currentPts = calcPersonalGoalPts(data);
+		currentPts = dayEntry
+			? calcProfilePts(dayEntry.value, goal, startVal, direction)
+			: calcPersonalGoalPts(data);
 		progressPct = Math.min(
 			100,
 			Math.round((currentPts / PROFILE_MAX_PTS) * 100),
@@ -357,7 +373,7 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 				</S.SectionSub>
 			</S.SectionHeader>
 
-			<GH.Card $todaySaved={goalLocked && !!todayEntry}>
+			<GH.Card $todaySaved={goalLocked && !!dayEntry}>
 				{goalLocked ? (
 					<GH.FullSpan>
 						<GH.ProgressTrack>
@@ -508,15 +524,23 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 								</>
 							) : null}
 
-							{todayEntry ? (
+							{dayEntry ? (
 								<>
-									<GH.FieldLabel>Today&apos;s value</GH.FieldLabel>
-									<GH.LoggedValue>{todayEntry.value}</GH.LoggedValue>
-									<GH.LoggedLbl>Logged today · locked</GH.LoggedLbl>
+									<GH.FieldLabel>
+										{isCalendarToday ? "Today's value" : "This day's value"}
+									</GH.FieldLabel>
+									<GH.LoggedValue>{dayEntry.value}</GH.LoggedValue>
+									<GH.LoggedLbl>
+										{isCalendarToday
+											? "Logged today · locked"
+											: "Logged this day · locked"}
+									</GH.LoggedLbl>
 								</>
 							) : (
 								<>
-									<GH.FieldLabel>Today&apos;s value</GH.FieldLabel>
+									<GH.FieldLabel>
+										{isCalendarToday ? "Today's value" : "This day's value"}
+									</GH.FieldLabel>
 									<GH.NumInput
 										type="number"
 										step="any"
@@ -544,7 +568,7 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 						<GH.GoalPtsMuted>—</GH.GoalPtsMuted>
 					)}
 					<GH.GoalPtsLabel>
-						{todayEntry ? "pts earned" : goalLocked ? "goal pts" : "preview"}
+						{dayEntry ? "pts earned" : goalLocked ? "goal pts" : "preview"}
 					</GH.GoalPtsLabel>
 				</GH.PtsCol>
 
@@ -556,7 +580,7 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 						>
 							Set goal
 						</GH.PrimaryBtn>
-					) : todayEntry ? (
+					) : dayEntry ? (
 						<GH.PrimaryBtn
 							type="button"
 							$saved
@@ -578,7 +602,7 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 					<GH.FullSpan>
 						<S.ProfileConfirmBar>
 							<span>
-								Once saved you can&apos;t update today&apos;s value. Lock it in?
+								Once saved you can&apos;t update this day&apos;s value. Lock it in?
 							</span>
 							<S.ConfirmBtns>
 								<S.BtnGhost
@@ -611,11 +635,12 @@ export function PersonalGoalPanel({ person }: { person: Person }) {
 							the allowed window).
 						</GH.HintRow>
 					</GH.FullSpan>
-				) : !todayEntry ? (
+				) : !dayEntry ? (
 					<GH.FullSpan>
 						<GH.HintRow>
-							Save value locks today — you won&apos;t be able to edit until
-							tomorrow.
+							{isCalendarToday
+								? "Save value locks today — you won&apos;t be able to edit until tomorrow."
+								: "Save value locks this day — pick another day in the log to edit a different day."}
 						</GH.HintRow>
 					</GH.FullSpan>
 				) : null}

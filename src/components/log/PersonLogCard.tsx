@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import styled from "styled-components";
 import { FREE_LIMIT } from "../../lib/config";
-import { today } from "../../lib/dates";
 import {
 	calcPersonalGoalPtsForDay,
 	calcPts,
@@ -297,6 +296,7 @@ export interface LogFormRow {
 
 export function PersonLogCard({
 	person,
+	logDate,
 	formRow,
 	entries,
 	profiles,
@@ -308,6 +308,8 @@ export function PersonLogCard({
 	onCancelConfirm,
 }: {
 	person: Person;
+	/** YYYY-MM-DD — which day is being logged (today or a recent past day). */
+	logDate: string;
 	formRow: LogFormRow;
 	entries: WorkoutEntry[];
 	profiles: Record<string, ProfileData | undefined>;
@@ -318,7 +320,7 @@ export function PersonLogCard({
 	onConfirmSave: () => void;
 	onCancelConfirm: () => void;
 }) {
-	const date = today();
+	const date = logDate;
 
 	const freeCounts = useMemo(() => getFreeCounts(entries), [entries]);
 	const fc = freeCounts[person.id] ?? { gym: 0, junk: 0 };
@@ -344,7 +346,7 @@ export function PersonLogCard({
 			? calcPersonalGoalPtsForDay(profileData, profileToday.value, date)
 			: null;
 
-	const wl = getWindowLimits(entries, person.id);
+	const wl = getWindowLimits(entries, person.id, date);
 	const gymWentDisabled = wl.gymMaxed;
 	const gymFreeDisabled = wl.gymMaxed || gymFreeLeft <= 0;
 	const junkCleanDisabled = wl.cleanMaxed;
@@ -464,7 +466,7 @@ export function PersonLogCard({
 					{dayWorkoutPts != null ? fmtPts(dayWorkoutPts) : "—"}
 				</DailyPts>
 				<DailyPtsLabel>
-					{alreadySaved ? "saved workout pts" : "pts today"}
+					{alreadySaved ? "saved workout pts" : "workout pts"}
 				</DailyPtsLabel>
 			</PtsCol>
 
@@ -492,7 +494,7 @@ export function PersonLogCard({
 			{showConfirm ? (
 				<ConfirmBar>
 					<span>
-						Once saved you can&apos;t update today&apos;s entry. Lock it in?
+						Once saved you can&apos;t update this day&apos;s entry. Lock it in?
 					</span>
 					<ConfirmBtns>
 						<BtnGhost

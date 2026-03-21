@@ -72,6 +72,48 @@ export function minYYYYMMDD(a: string, b: string): string {
   return as <= bs ? as : bs;
 }
 
+/** Workout log UI: today plus this many previous calendar days (inclusive). */
+export const WORKOUT_LOG_LOOKBACK_DAYS = 3;
+
+/** Min/max YYYY-MM-DD for the workout log date picker (local calendar). */
+export function workoutLogDateBounds(): { minDate: string; maxDate: string } {
+  const max = new Date();
+  const min = new Date(max);
+  min.setDate(min.getDate() - WORKOUT_LOG_LOOKBACK_DAYS);
+  return { minDate: toLocalYMD(min), maxDate: toLocalYMD(max) };
+}
+
+/** Clamp a YYYY-MM-DD string to the allowed workout log window. */
+export function clampWorkoutLogDate(raw: string): string {
+  const { minDate, maxDate } = workoutLogDateBounds();
+  const s = raw.slice(0, 10);
+  if (s < minDate) return minDate;
+  if (s > maxDate) return maxDate;
+  return s;
+}
+
+function toLocalYMD(d: Date): string {
+  return (
+    d.getFullYear() +
+    '-' +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(d.getDate()).padStart(2, '0')
+  );
+}
+
+/** Long display string for a YYYY-MM-DD (local). */
+export function formatDateDisplayYMD(ymd: string): string {
+  const d = new Date(String(ymd).slice(0, 10) + 'T12:00:00');
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export function windowOf(date: string, startDate: string): number {
   return Math.floor(dayIndex(date, startDate) / 7);
 }
