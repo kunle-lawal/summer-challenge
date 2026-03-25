@@ -2,7 +2,18 @@ import { useState } from "react";
 import styled from "styled-components";
 import { HistoryEntriesTable } from "../components/history/HistoryEntriesTable";
 import { useChallenge } from "../context/ChallengeContext";
+import { useSelectedPerson } from "../context/SelectedPersonContext";
 import { buildHistoryRows } from "../lib/history";
+
+const HISTORY_PAGE_SIZE = 25;
+
+function canSeeClearAllData(person: { id: string; name: string } | null): boolean {
+	if (!person) return false;
+	return (
+		person.id.toLowerCase() === "kunle" ||
+		person.name.trim().toLowerCase() === "kunle"
+	);
+}
 
 const SectionHeader = styled.div`
 	display: flex;
@@ -112,6 +123,7 @@ const PwErr = styled.div`
 `;
 
 export function HistoryPage() {
+	const { person } = useSelectedPerson();
 	const {
 		entries,
 		profiles,
@@ -120,6 +132,7 @@ export function HistoryPage() {
 		postToSheets,
 		clearAllLocal,
 	} = useChallenge();
+	const showClearControl = canSeeClearAllData(person);
 	const [showClear, setShowClear] = useState(false);
 	const [clearPw, setClearPw] = useState("");
 	const [clearErr, setClearErr] = useState("");
@@ -158,12 +171,14 @@ export function HistoryPage() {
 					<SectionTitle>History</SectionTitle>
 					<SectionSub>All logged entries</SectionSub>
 				</div>
-				<ClearBtn type="button" onClick={toggleClear}>
-					Clear all data
-				</ClearBtn>
+				{showClearControl ? (
+					<ClearBtn type="button" onClick={toggleClear}>
+						Clear all data
+					</ClearBtn>
+				) : null}
 			</SectionHeader>
 
-			{showClear ? (
+			{showClearControl && showClear ? (
 				<ClearPanel>
 					<div>
 						This will permanently delete <strong>all</strong> logged data and profile
@@ -189,7 +204,11 @@ export function HistoryPage() {
 				</ClearPanel>
 			) : null}
 
-			<HistoryEntriesTable rows={rows} showPlayerColumn />
+			<HistoryEntriesTable
+				rows={rows}
+				showPlayerColumn
+				pageSize={HISTORY_PAGE_SIZE}
+			/>
 		</div>
 	);
 }

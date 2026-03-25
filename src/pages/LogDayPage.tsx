@@ -17,8 +17,16 @@ import {
 	workoutLogSelectableDates,
 } from "../lib/dates";
 import { buildHistoryRows } from "../lib/history";
-import { calcPersonalGoalPts, calcPts } from "../lib/scoring";
+import {
+	calcPersonalGoalPts,
+	calcPtsForLogDay,
+	fmtPts,
+	getTotals,
+	ptsClass,
+} from "../lib/scoring";
 import type { WorkoutEntry } from "../types";
+
+const LOG_HISTORY_PAGE_SIZE = 20;
 
 const SectionHeader = styled.div`
 	margin-bottom: 1.75rem;
@@ -37,6 +45,34 @@ const SectionSub = styled.div`
 	font-size: 0.8rem;
 	color: ${({ theme }) => theme.color.muted2};
 	margin-top: 0.4rem;
+`;
+
+const TotalPtsBanner = styled.div`
+	margin-top: 0.85rem;
+	padding: 10px 14px;
+	background: ${({ theme }) => theme.color.surface};
+	border: 1px solid ${({ theme }) => theme.color.border};
+	border-radius: ${({ theme }) => theme.radii.md};
+	font-size: 0.82rem;
+	color: ${({ theme }) => theme.color.muted2};
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+`;
+
+const TotalPtsValue = styled.span<{
+	$tone: ReturnType<typeof ptsClass>;
+}>`
+	font-family: ${({ theme }) => theme.font.display};
+	font-weight: 800;
+	font-size: 0.95rem;
+	color: ${({ theme, $tone }) =>
+		$tone === "pos"
+			? theme.color.green
+			: $tone === "neg"
+				? theme.color.red
+				: theme.color.muted2};
 `;
 
 const ScoringKey = styled.div`
@@ -188,6 +224,16 @@ export function LogDayPage() {
 		[profiles, personId],
 	);
 
+	const challengeTotalPts = useMemo(() => {
+		if (!personId) return 0;
+		return (
+			getTotals(entries, profiles).find((t) => t.personId === personId)?.pts ??
+			0
+		);
+	}, [entries, personId, profiles]);
+
+	const totalPtsTone = ptsClass(challengeTotalPts);
+
 	useEffect(() => {
 		if (pathname !== "/log") return;
 		setLogDate(today());
@@ -262,7 +308,14 @@ export function LogDayPage() {
 			gym: formRow.gym,
 			steps: parseFloat(formRow.steps) || 0,
 			junk: formRow.junk,
-			pts: calcPts(formRow.gym, formRow.steps, formRow.junk),
+			pts: calcPtsForLogDay(
+				formRow.gym,
+				formRow.steps,
+				formRow.junk,
+				entries,
+				personId,
+				date,
+			),
 			lockedDay: true,
 		};
 
@@ -279,7 +332,7 @@ export function LogDayPage() {
 
 		void postToSheets("saveWorkout", entry);
 		setConfirmOpen(false);
-	}, [formRow, logDate, personId, postToSheets, updateCache]);
+	}, [entries, formRow, logDate, personId, postToSheets, updateCache]);
 
 	if (!person) return null;
 
@@ -290,6 +343,12 @@ export function LogDayPage() {
 				<SectionSub style={{ fontSize: "1rem" }}>
 					{person.name} · {formatDateDisplayYMD(logDate)}
 				</SectionSub>
+				<TotalPtsBanner>
+					<span>Total points (workouts + personal goal)</span>
+					<TotalPtsValue $tone={totalPtsTone}>
+						{fmtPts(challengeTotalPts)}
+					</TotalPtsValue>
+				</TotalPtsBanner>
 			</SectionHeader>
 
 			<LogDateRow>
@@ -385,6 +444,7 @@ export function LogDayPage() {
 					emptyMessage="No past entries yet."
 					footerProfilePts={profilePtsTotal}
 					strikeNonLatestGoalPts
+					pageSize={LOG_HISTORY_PAGE_SIZE}
 				/>
 			</HistoryBlock>
 		</div>

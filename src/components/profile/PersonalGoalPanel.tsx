@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useChallenge } from "../../context/ChallengeContext";
-import {
-	GOAL_RESET_CLOSE,
-	GOAL_RESET_OPEN,
-	PROFILE_MAX_PTS,
-} from "../../lib/config";
+import { PROFILE_MAX_PTS } from "../../lib/config";
 import { today } from "../../lib/dates";
-import {
-	calcPersonalGoalPts,
-	calcProfilePts,
-	fmtPts,
-} from "../../lib/scoring";
+import { calcPersonalGoalPts, calcProfilePts, fmtPts } from "../../lib/scoring";
 import type { Person, ProfileData, ResetLogEntry } from "../../types";
 import type { ProfileInputs } from "../../pages/profilesStyles";
 import * as S from "../../pages/profilesStyles";
@@ -40,18 +32,10 @@ export function PersonalGoalPanel({
 	/** YYYY-MM-DD — same workout log day as `LogDayPage` (today or a recent past day). */
 	logDate: string;
 }) {
-	const {
-		profiles,
-		updateCache,
-		postToSheets,
-		checkPassword,
-		clearGeneration,
-	} = useChallenge();
+	const { profiles, updateCache, postToSheets, clearGeneration } =
+		useChallenge();
 
 	const [inputs, setInputs] = useState<ProfileInputs>(emptyInputs);
-	const [unlockOpen, setUnlockOpen] = useState(false);
-	const [unlockPw, setUnlockPw] = useState("");
-	const [unlockErr, setUnlockErr] = useState("");
 	const [confirmValue, setConfirmValue] = useState(false);
 	const [valueErr, setValueErr] = useState("");
 
@@ -60,18 +44,12 @@ export function PersonalGoalPanel({
 	useEffect(() => {
 		if (clearGeneration === 0) return;
 		setInputs(emptyInputs);
-		setUnlockOpen(false);
-		setUnlockPw("");
-		setUnlockErr("");
 		setConfirmValue(false);
 		setValueErr("");
 	}, [clearGeneration]);
 
 	useEffect(() => {
 		setInputs(emptyInputs);
-		setUnlockOpen(false);
-		setUnlockPw("");
-		setUnlockErr("");
 		setConfirmValue(false);
 		setValueErr("");
 	}, [personId]);
@@ -156,79 +134,6 @@ export function PersonalGoalPanel({
 		void postToSheets("appendResetLog", resetEntry);
 	}, [inputs, personId, postToSheets, profiles, updateCache]);
 
-	const toggleUnlock = useCallback(() => {
-		if (unlockOpen) {
-			setUnlockOpen(false);
-			setUnlockPw("");
-			setUnlockErr("");
-			return;
-		}
-		setUnlockOpen(true);
-		setUnlockPw("");
-		setUnlockErr("");
-	}, [unlockOpen]);
-
-	const confirmUnlock = useCallback(() => {
-		const now = new Date();
-		if (now < GOAL_RESET_OPEN || now > GOAL_RESET_CLOSE) {
-			setUnlockErr("Goal resets are only allowed March 16–20, 2026.");
-			return;
-		}
-
-		if (!checkPassword(personId, unlockPw)) {
-			setUnlockErr("Incorrect password. Try again.");
-			setUnlockPw("");
-			return;
-		}
-
-		const pd = profiles[personId];
-		if (!pd) return;
-
-		const resetCount = (pd.goalResets || 0) + 1;
-		const time = nowTime();
-		const resetEntry: ResetLogEntry = {
-			date: today(),
-			time,
-			personId,
-			type: "goal_reset",
-			previousGoal: pd.goal,
-			previousStart: pd.startVal,
-			previousDirection: pd.direction,
-			resetNumber: resetCount,
-		};
-
-		updateCache((prev) => ({
-			...prev,
-			resetLog: [...prev.resetLog, resetEntry],
-			profiles: {
-				...prev.profiles,
-				[personId]: {
-					goal: null,
-					startVal: null,
-					direction: "down",
-					lockedGoal: false,
-					goalResets: resetCount,
-					entries: pd.entries ?? [],
-				},
-			},
-		}));
-
-		void postToSheets("appendResetLog", resetEntry);
-		void postToSheets("saveProfile", {
-			personId,
-			goal: "",
-			startVal: "",
-			direction: "down",
-			lockedGoal: false,
-			goalResets: resetCount,
-		});
-
-		setInputs(emptyInputs);
-		setUnlockOpen(false);
-		setUnlockPw("");
-		setUnlockErr("");
-	}, [checkPassword, personId, postToSheets, profiles, unlockPw, updateCache]);
-
 	const askProfileConfirm = useCallback(() => {
 		const val = inputs.valueInput;
 		setValueErr("");
@@ -254,9 +159,7 @@ export function PersonalGoalPanel({
 		const nextEntries =
 			idx >= 0
 				? list.map((e, i) =>
-						i === idx
-							? { date, value: val, pts: 0, lockedDay: true, time }
-							: e,
+						i === idx ? { date, value: val, pts: 0, lockedDay: true, time } : e,
 					)
 				: [...list, { date, value: val, pts: 0, lockedDay: true, time }];
 
@@ -287,7 +190,14 @@ export function PersonalGoalPanel({
 
 		setInputs((s) => ({ ...s, valueInput: "" }));
 		setConfirmValue(false);
-	}, [inputs.valueInput, logDate, personId, postToSheets, profiles, updateCache]);
+	}, [
+		inputs.valueInput,
+		logDate,
+		personId,
+		postToSheets,
+		profiles,
+		updateCache,
+	]);
 
 	const data = pData();
 	const inp = inputs;
@@ -336,33 +246,6 @@ export function PersonalGoalPanel({
 		rawProgressForComplete != null && rawProgressForComplete >= PROFILE_MAX_PTS;
 	const dirLabel = direction === "down" ? "Going down" : "Going up";
 
-	const lockIcon = (
-		<svg
-			width="12"
-			height="12"
-			viewBox="0 0 16 16"
-			fill="none"
-			xmlns="http://www.w3.org/2000/svg"
-			aria-hidden
-		>
-			<rect
-				x="3"
-				y="7"
-				width="10"
-				height="8"
-				rx="1.5"
-				stroke="currentColor"
-				strokeWidth="1.5"
-			/>
-			<path
-				d="M5 7V5a3 3 0 0 1 6 0"
-				stroke="currentColor"
-				strokeWidth="1.5"
-				strokeLinecap="round"
-			/>
-		</svg>
-	);
-
 	return (
 		<div>
 			<S.SectionHeader>
@@ -382,40 +265,6 @@ export function PersonalGoalPanel({
 								$widthPct={progressPct}
 							/>
 						</GH.ProgressTrack>
-					</GH.FullSpan>
-				) : null}
-				{unlockOpen ? (
-					<GH.FullSpan>
-						<S.PwBar>
-							<S.PwLabel>
-								Enter {person.name}&apos;s password to reset goal:
-							</S.PwLabel>
-							<S.PwInput
-								type="password"
-								placeholder="Password"
-								value={unlockPw}
-								onChange={(e) => setUnlockPw(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") confirmUnlock();
-								}}
-								autoFocus
-							/>
-							<S.PwBarBtns>
-								<S.BtnGhost
-									type="button"
-									onClick={toggleUnlock}
-								>
-									Cancel
-								</S.BtnGhost>
-								<S.BtnGold
-									type="button"
-									onClick={confirmUnlock}
-								>
-									Unlock
-								</S.BtnGold>
-							</S.PwBarBtns>
-							{unlockErr ? <S.PwError>{unlockErr}</S.PwError> : null}
-						</S.PwBar>
 					</GH.FullSpan>
 				) : null}
 
@@ -444,18 +293,6 @@ export function PersonalGoalPanel({
 							</>
 						)}
 					</GH.PersonMeta>
-					{goalLocked ? (
-						<GH.UnlockRow>
-							<GH.UnlockBtn
-								type="button"
-								onClick={toggleUnlock}
-								title="Reset goal"
-							>
-								{lockIcon}
-								Reset
-							</GH.UnlockBtn>
-						</GH.UnlockRow>
-					) : null}
 				</GH.PersonCol>
 
 				<GH.FieldCol>
@@ -602,7 +439,8 @@ export function PersonalGoalPanel({
 					<GH.FullSpan>
 						<S.ProfileConfirmBar>
 							<span>
-								Once saved you can&apos;t update this day&apos;s value. Lock it in?
+								Once saved you can&apos;t update this day&apos;s value. Lock it
+								in?
 							</span>
 							<S.ConfirmBtns>
 								<S.BtnGhost
@@ -622,7 +460,7 @@ export function PersonalGoalPanel({
 					</GH.FullSpan>
 				) : null}
 
-				{valueErr && !unlockOpen ? (
+				{valueErr ? (
 					<GH.FullSpan>
 						<GH.ValErr>{valueErr}</GH.ValErr>
 					</GH.FullSpan>
@@ -630,16 +468,13 @@ export function PersonalGoalPanel({
 
 				{!goalLocked ? (
 					<GH.FullSpan>
-						<GH.HintRow>
-							One lock per goal — same rules as before (password reset only in
-							the allowed window).
-						</GH.HintRow>
+						<GH.HintRow>One lock per goal — same rules as before.</GH.HintRow>
 					</GH.FullSpan>
 				) : !dayEntry ? (
 					<GH.FullSpan>
 						<GH.HintRow>
 							{isCalendarToday
-								? "Save value locks today — you won&apos;t be able to edit until tomorrow."
+								? "Save value locks today — you won't be able to edit until tomorrow."
 								: "Save value locks this day — pick another day in the log to edit a different day."}
 						</GH.HintRow>
 					</GH.FullSpan>

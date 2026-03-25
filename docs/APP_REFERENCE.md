@@ -138,9 +138,9 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 
 | Component | File | Role |
 |-----------|------|------|
-| `PersonLogCard` | [`PersonLogCard.tsx`](../src/components/log/PersonLogCard.tsx) | One person’s gym/steps/junk, points, save + confirm bar; takes **`logDate`** (YYYY-MM-DD) for which day is being logged; styled-components colocated here. |
-| `PersonalGoalPanel` | [`PersonalGoalPanel.tsx`](../src/components/profile/PersonalGoalPanel.tsx) | Single-person personal goal UI in a **horizontal grid** (same column pattern as **`PersonLogCard`**); receives **`logDate`** from **`LogDayPage`** so goal value save/load matches the selected workout day. Uses [`personalGoalHorizontalStyles.ts`](../src/components/profile/personalGoalHorizontalStyles.ts) + unlock/confirm bits from **`profilesStyles.ts`**. |
-| `HistoryEntriesTable` | [`HistoryEntriesTable.tsx`](../src/components/history/HistoryEntriesTable.tsx) | Shared history table (date, time, optional player column, type pills, details, pts). Optional **footer** (`footerProfilePts`): workouts sum + current personal-goal total. **`strikeNonLatestGoalPts`**: used on **`LogDayPage`** to strike through older goal rows. **`HistoryPage`** omits both. |
+| `PersonLogCard` | [`PersonLogCard.tsx`](../src/components/log/PersonLogCard.tsx) | One person’s gym/steps/junk, points, save + confirm bar; takes **`logDate`** (YYYY-MM-DD) for which day is being logged; styled-components colocated here. **Weekly gym/clean caps** (4 / 6 scoring days per challenge week) apply to **points only** via **`calcPtsForLogDay`** — all options stay selectable; **free gym / free junk** options are still disabled when that person’s **`FREE_LIMIT`** free passes are used up. |
+| `PersonalGoalPanel` | [`PersonalGoalPanel.tsx`](../src/components/profile/PersonalGoalPanel.tsx) | Single-person personal goal UI in a **horizontal grid** (same column pattern as **`PersonLogCard`**); receives **`logDate`** from **`LogDayPage`** so goal value save/load matches the selected workout day. Uses [`personalGoalHorizontalStyles.ts`](../src/components/profile/personalGoalHorizontalStyles.ts) + confirm bits from **`profilesStyles.ts`**. No in-app goal reset / unlock entry point (goal stays locked per product choice). |
+| `HistoryEntriesTable` | [`HistoryEntriesTable.tsx`](../src/components/history/HistoryEntriesTable.tsx) | Shared history table (date, time, optional player column, type pills, details, pts). Optional **footer** (`footerProfilePts`): workouts sum + current personal-goal total. **`strikeNonLatestGoalPts`**: used on **`LogDayPage`** to strike through older goal rows. **`HistoryPage`** omits both. Optional **`pageSize`**: paginates rows (newest on page 1; **Newer** / **Older** controls). |
 
 ---
 
@@ -155,9 +155,10 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 - **Requires:** `person` from **`useSelectedPerson`** (enforced by **`RequirePerson`** in `App.tsx`).
 - **Reads:** `entries`, `profiles`, `updateCache`, `postToSheets`, `clearGeneration` from context.
 - **Local state:** **`logDate`** (workout day: **`today`** through **`WORKOUT_LOG_LOOKBACK_DAYS`** ago, inclusive — see **`dates.ts`**), one `LogFormRow` (`gym`, `steps`, `junk`), confirm flag, validation message — for the **selected person only**. **Day** is chosen with **custom date chips** (from **`workoutLogSelectableDates()`**), not the native `type="date"` control, so mobile and desktop styling match (selected vs other allowed days).
-- **Renders:** that person’s **`PersonLogCard`** (passes **`logDate`**), then **`PersonalGoalPanel`** (passes the same **`logDate`** — goal value is for that calendar day), then **“Your past logs”**: **`buildHistoryRows(entries, profiles, [], { personId })`** (workouts + personal goal dailies only; **no** `resetLog` / goal set–reset rows) + **`HistoryEntriesTable`** with **`footerProfilePts={calcPersonalGoalPts(…)}`**, **`strikeNonLatestGoalPts`**, sorted newest first.
+- **Header:** shows **total challenge points** for the selected person (**`getTotals`** — same workout + personal-goal total as the leaderboard).
+- **Renders:** that person’s **`PersonLogCard`** (passes **`logDate`**), then **`PersonalGoalPanel`** (passes the same **`logDate`** — goal value is for that calendar day), then **“Your past logs”**: **`buildHistoryRows(entries, profiles, [], { personId })`** (workouts + personal goal dailies only; **no** `resetLog` / goal set–reset rows) + **`HistoryEntriesTable`** with **`footerProfilePts={calcPersonalGoalPts(…)}`**, **`strikeNonLatestGoalPts`**, **`pageSize`** (paginated), sorted newest first.
 - **Resets** `logDate` to **`today()`** when `pathname === '/log'`, when **`clearGeneration`** changes, or when **`person.id`** changes; form hydrates from cache for **`logDate`** when **`entries`** / **`personId`** / **`clearGeneration`** change.
-- **Save:** Builds `WorkoutEntry` with **`date = logDate`**, merges into `entries` via `updateCache`, `postToSheets('saveWorkout', entry)`.
+- **Save:** Builds `WorkoutEntry` with **`date = logDate`**, **`pts` from `calcPtsForLogDay`** (raw `calcPts` plus weekly gym/clean scoring caps), merges into `entries` via `updateCache`, `postToSheets('saveWorkout', entry)`.
 
 ### `profilesStyles.ts` — [`src/pages/profilesStyles.ts`](../src/pages/profilesStyles.ts)
 
@@ -170,8 +171,8 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 
 ### `HistoryPage` — [`src/pages/HistoryPage.tsx`](../src/pages/HistoryPage.tsx)
 
-- Builds rows via **`buildHistoryRows`** (`lib/history.ts`), sorts like legacy (date desc, then time); table UI is **`HistoryEntriesTable`** with the player column visible.
-- **Clear all:** password `checkPassword('__admin', …)`, then `clearAllLocal()` + `postToSheets('clearAll', {})`.
+- Builds rows via **`buildHistoryRows`** (`lib/history.ts`), sorts like legacy (date desc, then time); table UI is **`HistoryEntriesTable`** with the player column visible and **`pageSize`** pagination.
+- **Clear all:** shown only when the **selected person** (from **`useSelectedPerson`**, if any) is **Kunle** (`id` or `name` case-insensitive match). Uses password `checkPassword('__admin', …)`, then `clearAllLocal()` + `postToSheets('clearAll', {})`.
 
 ---
 
@@ -182,7 +183,7 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 | Config | [`config.ts`](../src/lib/config.ts) | Reads **`import.meta.env`**, `PEOPLE` JSON parse with defaults, `SCRIPT_URL`, **`CHALLENGE_START`** / **`CHALLENGE_END`**, goal-reset date bounds, `FREE_LIMIT`, `PROFILE_MAX_PTS`, `isScriptConfigured()`. |
 | Selected person | [`selectedPersonStorage.ts`](../src/lib/selectedPersonStorage.ts) | **`localStorage`** read/write for the chosen **`PEOPLE[].id`**; **`getStoredPerson()`** for overlays / welcome line. |
 | Dates | [`dates.ts`](../src/lib/dates.ts) | `today`, `todayDisplay`, `normalizeDateToYYYYMMDD` (Sheets serial/ISO), `dayIndex` / `windowOf`, **`minYYYYMMDD`**, **`WORKOUT_LOG_LOOKBACK_DAYS`**, **`workoutLogDateBounds`**, **`workoutLogSelectableDates`**, **`clampWorkoutLogDate`**, **`formatDateDisplayYMD`**, **`formatLogDateChipLabel`**, history display formatters. |
-| Scoring | [`scoring.ts`](../src/lib/scoring.ts) | `calcPts`, `calcProfilePts`, **`calcPersonalGoalPtsForDay`** / **`calcPersonalGoalPts`** (progress toward goal, 0–30; **no** per-day “missed log” penalty), `getWindowLimits` (optional **reference date** for the week window), `getFreeCounts`, **`getTotals`** (workout sum per person + **one** `calcPersonalGoalPts`, not a sum of goal-log rows), `initials`, `fmtPts`, `ptsClass`, `stepsPtsFromEntry`. |
+| Scoring | [`scoring.ts`](../src/lib/scoring.ts) | `calcPts` (per-day components before weekly caps), **`calcPtsForLogDay`** (same + **weekly** gym/clean scoring caps: **`WEEKLY_GYM_SCORE_DAYS`** / **`WEEKLY_CLEAN_SCORE_DAYS`**), `calcProfilePts`, **`calcPersonalGoalPtsForDay`** / **`calcPersonalGoalPts`** (progress toward goal, 0–30; **no** per-day “missed log” penalty), `getWindowLimits` (counts + maxed flags for the sidebar; caps enforced in **`calcPtsForLogDay`**, not by disabling inputs), `getFreeCounts`, **`getTotals`** (workout sum per person + **one** `calcPersonalGoalPts`, not a sum of goal-log rows), `initials`, `fmtPts`, `ptsClass`, `stepsPtsFromEntry`. |
 | Sheets I/O | [`sheets.ts`](../src/lib/sheets.ts) | `fetchSheetsJson`, `postToSheets`, `cacheFromPayload`, normalizers for workout/profile/goal/password/reset rows → **`ChallengeCache`**. |
 | History rows | [`history.ts`](../src/lib/history.ts) | `buildHistoryRows(entries, profiles, resetLog, opts?)` → discriminated **`HistoryDisplayRow`**. Optional **`opts.personId`** limits rows to one user (used on **`LogDayPage`**). Goal rows use **`calcPersonalGoalPtsForDay`** (current profile) for displayed pts. **`latestGoalRowIndex`** for log-page strike-through. |
 

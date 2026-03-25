@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import { latestGoalRowIndex, type HistoryDisplayRow } from "../../lib/history";
 import { fmtPts, ptsClass } from "../../lib/scoring";
@@ -66,6 +66,40 @@ const EmptyMsg = styled.div`
 	padding: 3rem 1rem;
 	color: ${({ theme }) => theme.color.muted};
 	font-size: 0.8rem;
+`;
+
+const PagerBar = styled.div`
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	padding: 10px 12px;
+	border-top: 1px solid ${({ theme }) => theme.color.border};
+	background: ${({ theme }) => theme.color.surface2};
+	font-size: 0.72rem;
+	color: ${({ theme }) => theme.color.muted2};
+`;
+
+const PagerBtn = styled.button`
+	background: ${({ theme }) => theme.color.surface};
+	border: 1px solid ${({ theme }) => theme.color.border2};
+	border-radius: ${({ theme }) => theme.radii.sm};
+	padding: 6px 14px;
+	font-family: ${({ theme }) => theme.font.body};
+	font-size: 0.72rem;
+	color: ${({ theme }) => theme.color.text};
+	cursor: pointer;
+	transition: border-color 0.15s;
+
+	&:hover:not(:disabled) {
+		border-color: ${({ theme }) => theme.color.gold};
+	}
+
+	&:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
 `;
 
 const Pill = styled.span<{
@@ -188,6 +222,8 @@ export type HistoryEntriesTableProps = {
 	footerProfilePts?: number;
 	/** Strike through goal pts except the chronologically latest goal row. */
 	strikeNonLatestGoalPts?: boolean;
+	/** When set, only this many rows render at a time (newest rows stay on page 1). */
+	pageSize?: number;
 };
 
 export function HistoryEntriesTable({
@@ -196,7 +232,29 @@ export function HistoryEntriesTable({
 	emptyMessage = "No entries yet.",
 	footerProfilePts,
 	strikeNonLatestGoalPts = false,
+	pageSize,
 }: HistoryEntriesTableProps) {
+	const paginate = pageSize != null && pageSize > 0;
+	const totalPages = useMemo(
+		() => (paginate ? Math.max(1, Math.ceil(rows.length / pageSize!)) : 1),
+		[paginate, rows.length, pageSize],
+	);
+
+	const [page, setPage] = useState(0);
+
+	useEffect(() => {
+		if (!paginate) return;
+		setPage((p) => Math.min(p, totalPages - 1));
+	}, [paginate, totalPages]);
+
+	const safePage = paginate ? Math.min(page, totalPages - 1) : 0;
+	const sliceStart = paginate ? safePage * pageSize! : 0;
+	const displayRows = useMemo(
+		() =>
+			paginate ? rows.slice(sliceStart, sliceStart + pageSize!) : rows,
+		[paginate, pageSize, rows, sliceStart],
+	);
+
 	const workoutPtsSum = useMemo(
 		() => rows.reduce((s, r) => (r.kind === "workout" ? s + r.pts : s), 0),
 		[rows],
@@ -213,6 +271,9 @@ export function HistoryEntriesTable({
 		: null;
 
 	const labelColSpan = showPlayerColumn ? 5 : 4;
+
+	const showPager =
+		paginate && rows.length > 0 && pageSize! < rows.length;
 
 	if (rows.length === 0) {
 		return (
@@ -237,45 +298,48 @@ export function HistoryEntriesTable({
 						</tr>
 					</thead>
 					<tbody>
-						{rows.map((r, i) => (
-							<Tr key={`${r.sortDate}-${r.sortTime}-${r.name}-${i}`}>
-								<Td>{r.dateDisplay}</Td>
-								<Td style={{ fontSize: "0.72rem", color: "inherit" }}>
-									{r.timeDisplay}
-								</Td>
-								{showPlayerColumn ? (
-									<Td style={{ color: "inherit", fontWeight: 500 }}>{r.name}</Td>
-								) : null}
-								<Td>
-									<TypeCell row={r} />
-								</Td>
-								<Td>
-									<DetailsCell row={r} />
-								</Td>
-								<Td style={{ textAlign: "right" }}>
-									{r.kind === "workout" && r.pts != null ? (
-										<PtsCell $tone={ptsClass(r.pts)}>{fmtPts(r.pts)}</PtsCell>
-									) : r.kind === "goal" ? (
-										<span
-											style={
-												strikeNonLatestGoalPts &&
-												latestGoalIdx !== null &&
-												i !== latestGoalIdx
-													? {
-															textDecoration: "line-through",
-															opacity: 0.5,
-														}
-													: undefined
-											}
-										>
-											<PtsCell $tone="purple">+{r.pts}</PtsCell>
-										</span>
-									) : r.kind === "goal_set" || r.kind === "goal_reset" ? (
-										<span style={{ color: "inherit", fontSize: "0.7rem" }}>—</span>
+						{displayRows.map((r, i) => {
+							const globalIdx = paginate ? sliceStart + i : i;
+							return (
+								<Tr key={`${r.sortDate}-${r.sortTime}-${r.name}-${globalIdx}`}>
+									<Td>{r.dateDisplay}</Td>
+									<Td style={{ fontSize: "0.72rem", color: "inherit" }}>
+										{r.timeDisplay}
+									</Td>
+									{showPlayerColumn ? (
+										<Td style={{ color: "inherit", fontWeight: 500 }}>{r.name}</Td>
 									) : null}
-								</Td>
-							</Tr>
-						))}
+									<Td>
+										<TypeCell row={r} />
+									</Td>
+									<Td>
+										<DetailsCell row={r} />
+									</Td>
+									<Td style={{ textAlign: "right" }}>
+										{r.kind === "workout" && r.pts != null ? (
+											<PtsCell $tone={ptsClass(r.pts)}>{fmtPts(r.pts)}</PtsCell>
+										) : r.kind === "goal" ? (
+											<span
+												style={
+													strikeNonLatestGoalPts &&
+													latestGoalIdx !== null &&
+													globalIdx !== latestGoalIdx
+														? {
+																textDecoration: "line-through",
+																opacity: 0.5,
+															}
+														: undefined
+												}
+											>
+												<PtsCell $tone="purple">+{r.pts}</PtsCell>
+											</span>
+										) : r.kind === "goal_set" || r.kind === "goal_reset" ? (
+											<span style={{ color: "inherit", fontSize: "0.7rem" }}>—</span>
+										) : null}
+									</Td>
+								</Tr>
+							);
+						})}
 					</tbody>
 					{showFooter && grandTotal != null ? (
 						<tfoot>
@@ -299,6 +363,27 @@ export function HistoryEntriesTable({
 					) : null}
 				</Table>
 			</TableWrap>
+			{showPager ? (
+				<PagerBar>
+					<PagerBtn
+						type="button"
+						disabled={safePage <= 0}
+						onClick={() => setPage((p) => Math.max(0, p - 1))}
+					>
+						Newer
+					</PagerBtn>
+					<span>
+						Page {safePage + 1} of {totalPages} ({rows.length} entries)
+					</span>
+					<PagerBtn
+						type="button"
+						disabled={safePage >= totalPages - 1}
+						onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+					>
+						Older
+					</PagerBtn>
+				</PagerBar>
+			) : null}
 		</HistoryWrap>
 	);
 }

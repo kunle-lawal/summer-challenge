@@ -2,8 +2,10 @@ import { useMemo } from "react";
 import styled from "styled-components";
 import { FREE_LIMIT } from "../../lib/config";
 import {
+	WEEKLY_CLEAN_SCORE_DAYS,
+	WEEKLY_GYM_SCORE_DAYS,
 	calcPersonalGoalPtsForDay,
-	calcPts,
+	calcPtsForLogDay,
 	fmtPts,
 	getFreeCounts,
 	getWindowLimits,
@@ -207,13 +209,6 @@ const SaveCol = styled.div`
 	}
 `;
 
-const WindowWarn = styled.div`
-	font-size: 0.58rem;
-	color: ${({ theme }) => theme.color.gold};
-	margin-top: 3px;
-	letter-spacing: 0.02em;
-`;
-
 const ValidationMsg = styled.div`
 	grid-column: 1 / -1;
 	font-size: 0.72rem;
@@ -335,9 +330,26 @@ export function PersonLogCard({
 
 	const hasValues = Boolean(formRow.gym && formRow.junk);
 	const livePts = hasValues
-		? calcPts(formRow.gym, formRow.steps, formRow.junk)
+		? calcPtsForLogDay(
+				formRow.gym,
+				formRow.steps,
+				formRow.junk,
+				entries,
+				person.id,
+				date,
+			)
 		: null;
-	const dayWorkoutPts = alreadySaved && savedEntry ? savedEntry.pts : livePts;
+	const dayWorkoutPts =
+		alreadySaved && savedEntry
+			? calcPtsForLogDay(
+					savedEntry.gym,
+					savedEntry.steps,
+					savedEntry.junk,
+					entries,
+					person.id,
+					date,
+				)
+			: livePts;
 
 	const profileData = profiles[person.id];
 	const profileToday = profileData?.entries?.find((e) => e.date === date);
@@ -347,26 +359,14 @@ export function PersonLogCard({
 			: null;
 
 	const wl = getWindowLimits(entries, person.id, date);
-	const gymWentDisabled = wl.gymMaxed;
-	const gymFreeDisabled = wl.gymMaxed || gymFreeLeft <= 0;
-	const junkCleanDisabled = wl.cleanMaxed;
-	const junkFreeDisabled = wl.cleanMaxed || junkFreeLeft <= 0;
+	const gymFreeDisabled = gymFreeLeft <= 0;
+	const junkFreeDisabled = junkFreeLeft <= 0;
 
 	const gymSelectDisabled = alreadySaved;
 	const junkSelectDisabled = alreadySaved;
 
-	const gymWentLabel = gymWentDisabled
-		? "✓ Went (week limit reached)"
-		: "✓ Went (+1)";
-	const gymFreeLabel = gymFreeDisabled
-		? `★ Free (${wl.gymMaxed ? "week limit" : "none left"})`
-		: "★ Free (+1)";
-	const junkCleanLabel = junkCleanDisabled
-		? "✓ Ate Clean (week limit reached)"
-		: "✓ Ate Clean (+1)";
-	const junkFreeLabel = junkFreeDisabled
-		? `★ Free (${wl.cleanMaxed ? "week limit" : "none left"})`
-		: "★ Free (+1)";
+	const gymFreeLabel = gymFreeDisabled ? "★ Free (none left)" : "★ Free (+1)";
+	const junkFreeLabel = junkFreeDisabled ? "★ Free (none left)" : "★ Free (+1)";
 
 	const ptsDisplayTone: PtsTone =
 		dayWorkoutPts != null ? ptsClass(dayWorkoutPts) : "zero";
@@ -376,9 +376,8 @@ export function PersonLogCard({
 			<div>
 				<PersonName>{person.name}</PersonName>
 				<PersonFree>
-					Week {wl.windowNum} · Gym: {wl.gymDays}/4
-					<br />
-					Gym: {wl.gymDays}/4 · Clean: {wl.cleanDays}/6
+					Week {wl.windowNum} · Gym: {wl.gymDays}/{WEEKLY_GYM_SCORE_DAYS} ·
+					Clean: {wl.cleanDays}/{WEEKLY_CLEAN_SCORE_DAYS}
 					<br />
 					Free: Gym {gymFreeLeft}/5 · Junk {junkFreeLeft}/5
 					{profilePts != null && (
@@ -399,12 +398,7 @@ export function PersonLogCard({
 					onChange={(e) => onChange({ ...formRow, gym: e.target.value })}
 				>
 					<option value="">— select —</option>
-					<option
-						value="went"
-						disabled={gymWentDisabled}
-					>
-						{gymWentLabel}
-					</option>
+					<option value="went">✓ Went (+1)</option>
 					<option value="skip">✗ Skipped (0)</option>
 					<option
 						value="free-gym"
@@ -413,9 +407,6 @@ export function PersonLogCard({
 						{gymFreeLabel}
 					</option>
 				</FieldSelect>
-				{wl.gymMaxed ? (
-					<WindowWarn>4/4 gym days used this week</WindowWarn>
-				) : null}
 			</div>
 
 			<StepsWrap>
@@ -442,12 +433,7 @@ export function PersonLogCard({
 					onChange={(e) => onChange({ ...formRow, junk: e.target.value })}
 				>
 					<option value="">— select —</option>
-					<option
-						value="clean"
-						disabled={junkCleanDisabled}
-					>
-						{junkCleanLabel}
-					</option>
+					<option value="clean">✓ Ate Clean (+1)</option>
 					<option value="ate">✗ Ate Junk (−1)</option>
 					<option
 						value="free-junk"
@@ -456,9 +442,6 @@ export function PersonLogCard({
 						{junkFreeLabel}
 					</option>
 				</FieldSelect>
-				{wl.cleanMaxed ? (
-					<WindowWarn>6/6 clean days used this week</WindowWarn>
-				) : null}
 			</div>
 
 			<PtsCol>
