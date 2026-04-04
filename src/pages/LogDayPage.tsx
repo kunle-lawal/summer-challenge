@@ -206,7 +206,7 @@ export function LogDayPage() {
 	const [formRow, setFormRow] = useState<LogFormRow>(emptyRow);
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const [validation, setValidation] = useState<string | null>(null);
-	const [logDate, setLogDate] = useState(() => clampWorkoutLogDate(today()));
+	const [logDate, setLogDate] = useState(today);
 
 	const personId = person?.id ?? "";
 
@@ -236,16 +236,16 @@ export function LogDayPage() {
 
 	useEffect(() => {
 		if (pathname !== "/log") return;
-		setLogDate(clampWorkoutLogDate(today()));
+		setLogDate(today());
 	}, [pathname]);
 
 	useEffect(() => {
 		if (clearGeneration === 0) return;
-		setLogDate(clampWorkoutLogDate(today()));
+		setLogDate(today());
 	}, [clearGeneration]);
 
 	useEffect(() => {
-		setLogDate(clampWorkoutLogDate(today()));
+		setLogDate(today());
 	}, [personId]);
 
 	useEffect(() => {

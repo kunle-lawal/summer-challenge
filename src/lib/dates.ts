@@ -48,23 +48,7 @@ export function today(): string {
   );
 }
 
-/**
- * March 30 (any year) is omitted from the workout log chip window and is never
- * formatted with a long weekday (avoids “Monday, March 30th”-style copy in the UI).
- */
-export function isWorkoutLogCalendarDayHidden(ymd: string): boolean {
-  return ymd.slice(5, 10) === '03-30';
-}
-
 export function todayDisplay(): string {
-  const ymd = today();
-  if (isWorkoutLogCalendarDayHidden(ymd)) {
-    return new Date().toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
   return new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
@@ -91,18 +75,6 @@ export function minYYYYMMDD(a: string, b: string): string {
 /** Workout log UI: today plus this many previous calendar days (inclusive). */
 export const WORKOUT_LOG_LOOKBACK_DAYS = 3;
 
-function enumerateInclusiveYMD(minDate: string, maxDate: string): string[] {
-  const out: string[] = [];
-  const cur = new Date(minDate.slice(0, 10) + 'T12:00:00');
-  const end = new Date(maxDate.slice(0, 10) + 'T12:00:00');
-  if (Number.isNaN(cur.getTime()) || Number.isNaN(end.getTime())) return [];
-  while (cur <= end) {
-    out.push(toLocalYMD(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
-  return out;
-}
-
 /** Min/max YYYY-MM-DD for the workout log date picker (local calendar). */
 export function workoutLogDateBounds(): { minDate: string; maxDate: string } {
   const max = new Date();
@@ -111,47 +83,33 @@ export function workoutLogDateBounds(): { minDate: string; maxDate: string } {
   return { minDate: toLocalYMD(min), maxDate: toLocalYMD(max) };
 }
 
-/** Clamp a YYYY-MM-DD string to the allowed workout log window (never a hidden calendar day). */
+/** Clamp a YYYY-MM-DD string to the allowed workout log window. */
 export function clampWorkoutLogDate(raw: string): string {
   const { minDate, maxDate } = workoutLogDateBounds();
-  let s = raw.slice(0, 10);
-  if (s < minDate) s = minDate;
-  if (s > maxDate) s = maxDate;
-  if (!isWorkoutLogCalendarDayHidden(s)) return s;
-  const allowed = workoutLogSelectableDates();
-  if (allowed.length === 0) return s;
-  let best = allowed[0]!;
-  let bestDist = Infinity;
-  for (const a of allowed) {
-    const t0 = new Date(s + 'T12:00:00').getTime();
-    const t1 = new Date(a + 'T12:00:00').getTime();
-    const dist = Math.abs(t1 - t0);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = a;
-    }
-  }
-  return best;
+  const s = raw.slice(0, 10);
+  if (s < minDate) return minDate;
+  if (s > maxDate) return maxDate;
+  return s;
 }
 
-/** Oldest → newest calendar days allowed for workout logging (hidden days omitted). */
+/** Oldest → newest calendar days allowed for workout logging (length = WORKOUT_LOG_LOOKBACK_DAYS + 1). */
 export function workoutLogSelectableDates(): string[] {
   const { minDate, maxDate } = workoutLogDateBounds();
-  const all = enumerateInclusiveYMD(minDate, maxDate);
-  if (all.length === 0) return [maxDate];
-  return all.filter((d) => !isWorkoutLogCalendarDayHidden(d));
+  const out: string[] = [];
+  const cur = new Date(minDate.slice(0, 10) + 'T12:00:00');
+  const end = new Date(maxDate.slice(0, 10) + 'T12:00:00');
+  if (Number.isNaN(cur.getTime()) || Number.isNaN(end.getTime())) return [maxDate];
+  while (cur <= end) {
+    out.push(toLocalYMD(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
 }
 
 /** Compact label for log-date chips (e.g. "Wed, Mar 19"). */
 export function formatLogDateChipLabel(ymd: string): string {
   const d = new Date(String(ymd).slice(0, 10) + 'T12:00:00');
   if (Number.isNaN(d.getTime())) return ymd;
-  if (isWorkoutLogCalendarDayHidden(ymd.slice(0, 10))) {
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
-  }
   return d.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -171,16 +129,8 @@ function toLocalYMD(d: Date): string {
 
 /** Long display string for a YYYY-MM-DD (local). */
 export function formatDateDisplayYMD(ymd: string): string {
-  const s = String(ymd).slice(0, 10);
-  const d = new Date(s + 'T12:00:00');
+  const d = new Date(String(ymd).slice(0, 10) + 'T12:00:00');
   if (Number.isNaN(d.getTime())) return ymd;
-  if (isWorkoutLogCalendarDayHidden(s)) {
-    return d.toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
   return d.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
