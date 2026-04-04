@@ -24,6 +24,7 @@ This document describes **how the React app is structured**, **why key decisions
 
 ```
 summer-challenge/
+├── archive/                # Optional frozen feature code (not in the build); see docs below
 ├── index.html              # Vite HTML shell only (fonts + #root)
 ├── vite.config.ts
 ├── package.json
@@ -154,7 +155,7 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 
 - **Requires:** `person` from **`useSelectedPerson`** (enforced by **`RequirePerson`** in `App.tsx`).
 - **Reads:** `entries`, `profiles`, `updateCache`, `postToSheets`, `clearGeneration` from context.
-- **Local state:** **`logDate`** (workout day: **`today`** through **`WORKOUT_LOG_LOOKBACK_DAYS`** ago, inclusive — see **`dates.ts`**), one `LogFormRow` (`gym`, `steps`, `junk`), confirm flag, validation message — for the **selected person only**. **Day** is chosen with **custom date chips** (from **`workoutLogSelectableDates()`**), not the native `type="date"` control, so mobile and desktop styling match (selected vs other allowed days).
+- **Local state:** **`logDate`** (workout day: **`today`** through **`WORKOUT_LOG_LOOKBACK_DAYS`** ago, inclusive — see **`workoutLogSelectableDates()`** / **`clampWorkoutLogDate`** in **`dates.ts`**), one `LogFormRow` (`gym`, `steps`, `junk`), confirm flag, validation message — for the **selected person only**. **Day** is chosen with **custom date chips**, not the native `type="date"` control, so mobile and desktop styling match (selected vs other allowed days).
 - **Header:** shows **total challenge points** for the selected person (**`getTotals`** — same workout + personal-goal total as the leaderboard).
 - **Renders:** that person’s **`PersonLogCard`** (passes **`logDate`**), then **`PersonalGoalPanel`** (passes the same **`logDate`** — goal value is for that calendar day), then **“Your past logs”**: **`buildHistoryRows(entries, profiles, [], { personId })`** (workouts + personal goal dailies only; **no** `resetLog` / goal set–reset rows) + **`HistoryEntriesTable`** with **`footerProfilePts={calcPersonalGoalPts(…)}`**, **`strikeNonLatestGoalPts`**, **`pageSize`** (paginated), sorted newest first.
 - **Resets** `logDate` to **`today()`** when `pathname === '/log'`, when **`clearGeneration`** changes, or when **`person.id`** changes; form hydrates from cache for **`logDate`** when **`entries`** / **`personId`** / **`clearGeneration`** change.
@@ -184,10 +185,12 @@ There is **no `hooks/` folder** today: **`useChallenge`** and **`useSelectedPers
 | Selected person | [`selectedPersonStorage.ts`](../src/lib/selectedPersonStorage.ts) | **`localStorage`** read/write for the chosen **`PEOPLE[].id`**; **`getStoredPerson()`** for overlays / welcome line. |
 | Dates | [`dates.ts`](../src/lib/dates.ts) | `today`, `todayDisplay`, `normalizeDateToYYYYMMDD` (Sheets serial/ISO), `dayIndex` / `windowOf`, **`minYYYYMMDD`**, **`WORKOUT_LOG_LOOKBACK_DAYS`**, **`workoutLogDateBounds`**, **`workoutLogSelectableDates`**, **`clampWorkoutLogDate`**, **`formatDateDisplayYMD`**, **`formatLogDateChipLabel`**, **`formatHistoryDate`**, **`formatHistoryDateWithWeekday`** (short weekday + date for history tables), **`formatHistoryTime`**. |
 | Scoring | [`scoring.ts`](../src/lib/scoring.ts) | `calcPts` (per-day components before weekly caps), **`calcPtsForLogDay`** (same + **weekly** gym/clean scoring caps: **`WEEKLY_GYM_SCORE_DAYS`** / **`WEEKLY_CLEAN_SCORE_DAYS`**), `calcProfilePts`, **`calcPersonalGoalPtsForDay`** / **`calcPersonalGoalPts`** (progress toward goal, 0–30; **no** per-day “missed log” penalty), `getWindowLimits` (counts + maxed flags for the sidebar; caps enforced in **`calcPtsForLogDay`**, not by disabling inputs), `getFreeCounts`, **`getTotals`** (workout sum per person + **one** `calcPersonalGoalPts`, not a sum of goal-log rows), `initials`, `fmtPts`, `ptsClass`, `stepsPtsFromEntry`. |
+| Dates | [`dates.ts`](../src/lib/dates.ts) | `today`, `todayDisplay`, `normalizeDateToYYYYMMDD` (Sheets serial/ISO), `dayIndex` / **`windowOf`** (7-day windows from **`CHALLENGE_START`** — used with scoring), **`minYYYYMMDD`**, **`WORKOUT_LOG_LOOKBACK_DAYS`**, **`workoutLogDateBounds`**, **`workoutLogSelectableDates`**, **`clampWorkoutLogDate`**, **`formatDateDisplayYMD`**, **`formatLogDateChipLabel`**, history display formatters. |
+| Scoring | [`scoring.ts`](../src/lib/scoring.ts) | `calcPts` (per-day components before weekly caps; **`ate`** always applies −1 in the base), **`calcPtsForLogDay`** (caps gym/clean by **`windowOf(..., CHALLENGE_START)`** with **`WEEKLY_GYM_SCORE_DAYS`** / **`WEEKLY_CLEAN_SCORE_DAYS`**; **first `ate` per person per challenge week** waives the junk −1; further **`ate`** in that window keep −1), `calcProfilePts`, **`calcPersonalGoalPtsForDay`** / **`calcPersonalGoalPts`** (progress toward goal, 0–30; **no** per-day “missed log” penalty), `getWindowLimits` (same window + **`windowNum`** = `windowOf + 1` for sidebar; caps enforced in **`calcPtsForLogDay`**, not by disabling inputs), `getFreeCounts`, **`getTotals`** (workout sum per person + **one** `calcPersonalGoalPts`, not a sum of goal-log rows), `initials`, `fmtPts`, `ptsClass`, `stepsPtsFromEntry`. |
 | Sheets I/O | [`sheets.ts`](../src/lib/sheets.ts) | `fetchSheetsJson`, `postToSheets`, `cacheFromPayload`, normalizers for workout/profile/goal/password/reset rows → **`ChallengeCache`**. |
 | History rows | [`history.ts`](../src/lib/history.ts) | `buildHistoryRows(entries, profiles, resetLog, opts?)` → discriminated **`HistoryDisplayRow`**. Optional **`opts.personId`** limits rows to one user (used on **`LogDayPage`**). Goal rows use **`calcPersonalGoalPtsForDay`** (current profile) for displayed pts. **`latestGoalRowIndex`** for log-page strike-through. |
 
-**Reason:** Keeps components thin and testable; scoring/date rules stay identical to legacy behavior.
+**Reason:** Keeps components thin and testable. Weekly workout caps use **`windowOf(date, CHALLENGE_START)`** — consecutive 7-day periods from the challenge start date (same idea as the legacy app), not calendar Monday–Sunday.
 
 ---
 
@@ -258,6 +261,7 @@ Actions still align with the legacy inline script (`saveWorkout`, `saveProfile`,
 |----------|-----|
 | [`README.md`](../README.md) | Quick start, env, Netlify |
 | [`LEGACY_INDEX_REFERENCE.md`](../LEGACY_INDEX_REFERENCE.md) | Old monolithic HTML/JS for diffing behavior |
+| [`ARCHIVED_ENCOURAGEMENT_FEATURE.md`](ARCHIVED_ENCOURAGEMENT_FEATURE.md) | Removed **“For today”** log encouragement; source under **`archive/encouragement-feature/`** |
 | [`.env.example`](../.env.example) | Env template |
 
 ---

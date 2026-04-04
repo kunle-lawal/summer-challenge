@@ -434,7 +434,7 @@ export function PersonLogCard({
 				>
 					<option value="">— select —</option>
 					<option value="clean">✓ Ate Clean (+1)</option>
-					<option value="ate">✗ Ate Junk (−1)</option>
+					<option value="ate">✗ Ate Junk (2nd+ in challenge week −1)</option>
 					<option
 						value="free-junk"
 						disabled={junkFreeDisabled}
