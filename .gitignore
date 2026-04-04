@@ -3,3 +3,8 @@ dist
 .DS_Store
 .env
 *.local
+archive/encouragement-feature/encouragementCopy.ts
+archive/encouragement-feature/encouragementHistory.ts
+archive/encouragement-feature/encouragePanelStorage.ts
+archive/encouragement-feature/logEncouragement.ts
+archive/encouragement-feature/README.md

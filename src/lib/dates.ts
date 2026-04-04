@@ -139,6 +139,10 @@ export function formatDateDisplayYMD(ymd: string): string {
   });
 }
 
+/**
+ * 0-based challenge week index: seven-day windows anchored at `startDate` (typically
+ * `CHALLENGE_START` from `config.ts`). Used for weekly gym/clean/junk caps in scoring.
+ */
 export function windowOf(date: string, startDate: string): number {
   return Math.floor(dayIndex(date, startDate) / 7);
 }

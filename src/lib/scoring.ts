@@ -18,10 +18,12 @@ export function calcPts(gym: string, steps: string | number, junk: string): numb
 }
 
 /**
- * Workout points for one day, applying weekly caps: after {@link WEEKLY_GYM_SCORE_DAYS}
- * scoring gym days and {@link WEEKLY_CLEAN_SCORE_DAYS} scoring clean days in the same
- * window as `logDate`, extra went/free-gym or clean/free-junk choices still log but drop
- * the +1 for that bucket (steps and junk penalty unchanged).
+ * Workout points for one day, applying weekly caps in the same **challenge week** as
+ * `logDate` ({@link windowOf} vs {@link CHALLENGE_START}): after
+ * {@link WEEKLY_GYM_SCORE_DAYS} scoring gym days and {@link WEEKLY_CLEAN_SCORE_DAYS}
+ * scoring clean days in that window, extra went/free-gym or clean/free-junk still log but
+ * drop the +1 for that bucket. Steps unchanged. **Junk:** first `ate` in that window has
+ * no −1; each additional `ate` in the same window keeps the −1 from {@link calcPts}.
  */
 export function calcPtsForLogDay(
   gym: string,
@@ -46,12 +48,14 @@ export function calcPtsForLogDay(
   const priorClean = others.filter(
     (e) => e.junk === 'clean' || e.junk === 'free-junk',
   ).length;
+  const priorAte = others.filter((e) => e.junk === 'ate').length;
 
   let pts = calcPts(gym, steps, junk);
   const gymWouldScore = gym === 'went' || gym === 'free-gym';
   const cleanWouldScore = junk === 'clean' || junk === 'free-junk';
   if (gymWouldScore && priorGym >= WEEKLY_GYM_SCORE_DAYS) pts -= 1;
   if (cleanWouldScore && priorClean >= WEEKLY_CLEAN_SCORE_DAYS) pts -= 1;
+  if (junk === 'ate' && priorAte === 0) pts += 1;
   return Math.round(pts * 10) / 10;
 }
 

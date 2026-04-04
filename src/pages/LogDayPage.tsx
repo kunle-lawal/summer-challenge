@@ -391,7 +391,7 @@ export function LogDayPage() {
 					<KeyVal $variant="pos">+1</KeyVal> Ate clean
 				</KeyItem>
 				<KeyItem>
-					<KeyVal $variant="neg">−1</KeyVal> Ate junk
+					<KeyVal $variant="neg">−1</KeyVal> Ate junk (2nd+ in challenge week)
 				</KeyItem>
 				<KeyItem>
 					<KeyVal $variant="neutral">0–5</KeyVal> Steps (10k = 5pts)
