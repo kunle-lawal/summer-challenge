@@ -155,6 +155,25 @@ export function formatHistoryDate(val: unknown): string {
   });
 }
 
+/** History table: short weekday + date, e.g. `Sat, Mar 21, 2026` (local). */
+export function formatHistoryDateWithWeekday(val: unknown): string {
+  if (val == null || val === '' || String(val).trim() === '—') return '—';
+  const ymd = normalizeDateToYYYYMMDD(val);
+  const d = ymd
+    ? new Date(ymd.slice(0, 10) + 'T12:00:00')
+    : (() => {
+        const s = String(val).trim();
+        return s.includes('T') ? new Date(s) : new Date(s + 'T00:00:00');
+      })();
+  if (Number.isNaN(d.getTime())) return String(val);
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export function formatHistoryTime(val: unknown): string {
   if (val == null || val === '' || String(val).trim() === '—') return '—';
   const s = String(val).trim();

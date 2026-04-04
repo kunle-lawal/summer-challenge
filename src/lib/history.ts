@@ -1,6 +1,9 @@
 import type { GoalDayEntry, ProfileData, ResetLogEntry, WorkoutEntry } from '../types';
 import { PEOPLE } from './config';
-import { formatHistoryDate, formatHistoryTime } from './dates';
+import {
+  formatHistoryDateWithWeekday,
+  formatHistoryTime,
+} from './dates';
 import { calcPersonalGoalPtsForDay, ptsClass, stepsPtsFromEntry } from './scoring';
 import type { PtsTone } from './scoring';
 
@@ -90,7 +93,7 @@ export function buildHistoryRows(
       kind: 'workout',
       sortDate: e.date,
       sortTime: e.time || '—',
-      dateDisplay: formatHistoryDate(e.date),
+      dateDisplay: formatHistoryDateWithWeekday(e.date),
       timeDisplay: formatHistoryTime(e.time),
       name,
       pill: 'workout',
@@ -121,7 +124,7 @@ export function buildHistoryRows(
         kind: 'goal_set',
         sortDate: e.date,
         sortTime: e.time || '—',
-        dateDisplay: formatHistoryDate(e.date),
+        dateDisplay: formatHistoryDateWithWeekday(e.date),
         timeDisplay: formatHistoryTime(e.time),
         name,
         pill: 'goal_set',
@@ -135,7 +138,7 @@ export function buildHistoryRows(
         kind: 'goal_reset',
         sortDate: e.date,
         sortTime: e.time || '—',
-        dateDisplay: formatHistoryDate(e.date),
+        dateDisplay: formatHistoryDateWithWeekday(e.date),
         timeDisplay: formatHistoryTime(e.time),
         name,
         pill: 'goal_reset',
@@ -167,7 +170,7 @@ function rowFromGoalEntry(
     kind: 'goal',
     sortDate: e.date,
     sortTime: e.time || '—',
-    dateDisplay: formatHistoryDate(e.date),
+    dateDisplay: formatHistoryDateWithWeekday(e.date),
     timeDisplay: formatHistoryTime(e.time),
     name,
     pill: 'goal',
