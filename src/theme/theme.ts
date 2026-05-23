@@ -1,73 +1,77 @@
 export interface AppTheme {
   color: {
     bg: string;
+    bg2: string;
     surface: string;
     surface2: string;
-    border: string;
-    border2: string;
-    text: string;
-    muted: string;
-    muted2: string;
+    ink: string;
+    ink2: string;
+    ink3: string;
+    ink4: string;
+    hair: string;
+    hair2: string;
+    accent: string;
+    accentInk: string;
+    accentTint: string;
+    good: string;
+    goodTint: string;
+    bad: string;
+    badTint: string;
     gold: string;
-    goldDim: string;
-    green: string;
-    greenDim: string;
-    red: string;
-    redDim: string;
-    blue: string;
-    blueDim: string;
-    purple: string;
-    purpleDim: string;
-    podium2: string;
-    podium2Border: string;
-    podium3: string;
-    podium3Border: string;
   };
   font: {
     display: string;
     body: string;
+    mono: string;
   };
   radii: {
     sm: string;
     md: string;
     lg: string;
+    xl: string;
     pill: string;
+  };
+  size: {
+    base: string;
+    padScreen: string;
   };
 }
 
 export const appTheme: AppTheme = {
   color: {
-    bg: '#0E0E0E',
-    surface: '#1A1A1A',
-    surface2: '#222222',
-    border: 'rgba(255,255,255,0.07)',
-    border2: 'rgba(255,255,255,0.13)',
-    text: '#F0EBE1',
-    muted: '#6B6560',
-    muted2: '#9A948E',
-    gold: '#E8A020',
-    goldDim: 'rgba(232,160,32,0.12)',
-    green: '#4ADE80',
-    greenDim: 'rgba(74,222,128,0.12)',
-    red: '#F87171',
-    redDim: 'rgba(248,113,113,0.12)',
-    blue: '#60A5FA',
-    blueDim: 'rgba(96,165,250,0.12)',
-    purple: '#C084FC',
-    purpleDim: 'rgba(192,132,252,0.12)',
-    podium2: 'rgba(148,163,184,0.05)',
-    podium2Border: 'rgba(148,163,184,0.2)',
-    podium3: 'rgba(180,83,9,0.05)',
-    podium3Border: 'rgba(180,83,9,0.2)',
+    bg: '#f6f3ec',
+    bg2: '#eee9dc',
+    surface: '#fffdf6',
+    surface2: '#f9f5e9',
+    ink: '#18170f',
+    ink2: '#4a4538',
+    ink3: '#8a8473',
+    ink4: '#b5af9e',
+    hair: 'rgba(24,23,15,0.08)',
+    hair2: 'rgba(24,23,15,0.16)',
+    accent: '#e25a2a',
+    accentInk: '#fffdf6',
+    accentTint: 'rgba(226,90,42,0.10)',
+    good: '#3a6b3f',
+    goodTint: 'rgba(58,107,63,0.10)',
+    bad: '#9a3412',
+    badTint: 'rgba(154,52,18,0.10)',
+    gold: '#b48a2a',
   },
   font: {
-    display: "'Unbounded', sans-serif",
-    body: "'DM Sans', sans-serif",
+    display: '"Instrument Serif", "Georgia", serif',
+    body: '"Geist", -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif',
+    mono: '"JetBrains Mono", ui-monospace, "SFMono-Regular", monospace',
   },
   radii: {
-    sm: '6px',
+    sm: '4px',
     md: '8px',
     lg: '14px',
+    xl: '22px',
     pill: '999px',
+  },
+  size: {
+    base: '14.5px',
+    padScreen: '16px',
   },
 };

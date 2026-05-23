@@ -12,19 +12,33 @@
     "prebuild": "node scripts/check-node.cjs",
     "build": "tsc --noEmit && vite build",
     "prepreview": "node scripts/check-node.cjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "date-fns": "^4.3.0",
+    "date-fns-tz": "^3.2.0",
+    "firebase": "^12.13.0",
+    "nanoid": "^5.1.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
     "styled-components": "^6.1.13"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "@vitest/coverage-v8": "^3.2.4",
+    "happy-dom": "^20.9.0",
     "typescript": "~5.6.2",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vitest": "^3.2.4"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-darwin-arm64": "^1.0.2"
   }
 }

@@ -1,196 +1,170 @@
-/** Normalize date from Sheets/API to YYYY-MM-DD. */
-export function normalizeDateToYYYYMMDD(val: unknown): string {
-	if (val == null || val === "") return "";
-	if (typeof val === "number") {
-		const d = new Date((val - 25569) * 86400000);
-		if (Number.isNaN(d.getTime())) return "";
-		return (
-			d.getFullYear() +
-			"-" +
-			String(d.getMonth() + 1).padStart(2, "0") +
-			"-" +
-			String(d.getDate()).padStart(2, "0")
-		);
-	}
-	const s = String(val).trim();
-	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-	if (s.includes("T")) {
-		const d = new Date(s);
-		if (!Number.isNaN(d.getTime()))
-			return (
-				d.getFullYear() +
-				"-" +
-				String(d.getMonth() + 1).padStart(2, "0") +
-				"-" +
-				String(d.getDate()).padStart(2, "0")
-			);
-	}
-	const d = new Date(s);
-	if (!Number.isNaN(d.getTime()))
-		return (
-			d.getFullYear() +
-			"-" +
-			String(d.getMonth() + 1).padStart(2, "0") +
-			"-" +
-			String(d.getDate()).padStart(2, "0")
-		);
-	return s;
+/**
+ * Timezone-aware date math for the challenge engine.
+ *
+ * All "date" values in the system are YYYY-MM-DD strings scoped to the
+ * challenge's IANA timezone. This module provides the primitives that the
+ * rule engine and CRUD layer build on.
+ *
+ * Invariants:
+ *  - YYYY-MM-DD arithmetic is pure calendar math (UTC midnight) and is
+ *    safe across DST transitions.
+ *  - "Today" / "yesterday" comparisons always use the challenge timezone,
+ *    never the browser's local time.
+ */
+
+import { format } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
+import type { DateString } from '../types';
+
+// ---------------------------------------------------------------------------
+// Formatting
+// ---------------------------------------------------------------------------
+
+/**
+ * Format a UTC Date as YYYY-MM-DD in the given IANA timezone.
+ * This is the canonical way to get a calendar date for display or comparison.
+ */
+export function formatInTz(date: Date, timezone: string): DateString {
+  return format(toZonedTime(date, timezone), 'yyyy-MM-dd');
 }
 
-export function today(): string {
-	const d = new Date();
-	return (
-		d.getFullYear() +
-		"-" +
-		String(d.getMonth() + 1).padStart(2, "0") +
-		"-" +
-		String(d.getDate()).padStart(2, "0")
-	);
-}
+// ---------------------------------------------------------------------------
+// "Now" helpers (accept optional `now` for testing)
+// ---------------------------------------------------------------------------
 
-export function todayDisplay(): string {
-	return new Date().toLocaleDateString("en-US", {
-		weekday: "long",
-		month: "long",
-		day: "numeric",
-		year: "numeric",
-	});
-}
-
-export function dayIndex(date: string, startDate: string): number {
-	const msPerDay = 86400000;
-	const a = new Date(String(startDate).slice(0, 10) + "T00:00:00");
-	const b = new Date(String(date).slice(0, 10) + "T00:00:00");
-	if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
-	return Math.floor((b.getTime() - a.getTime()) / msPerDay);
-}
-
-/** Earlier of two YYYY-MM-DD strings (lexicographic compare). */
-export function minYYYYMMDD(a: string, b: string): string {
-	const as = a.slice(0, 10);
-	const bs = b.slice(0, 10);
-	return as <= bs ? as : bs;
-}
-
-/** Workout log UI: today plus this many previous calendar days (inclusive). */
-export const WORKOUT_LOG_LOOKBACK_DAYS = 31;
-
-/** Min/max YYYY-MM-DD for the workout log date picker (local calendar). */
-export function workoutLogDateBounds(): { minDate: string; maxDate: string } {
-	const max = new Date();
-	const min = new Date(max);
-	min.setDate(min.getDate() - WORKOUT_LOG_LOOKBACK_DAYS);
-	return { minDate: toLocalYMD(min), maxDate: toLocalYMD(max) };
-}
-
-/** Clamp a YYYY-MM-DD string to the allowed workout log window. */
-export function clampWorkoutLogDate(raw: string): string {
-	const { minDate, maxDate } = workoutLogDateBounds();
-	const s = raw.slice(0, 10);
-	if (s < minDate) return minDate;
-	if (s > maxDate) return maxDate;
-	return s;
-}
-
-/** Oldest → newest calendar days allowed for workout logging (length = WORKOUT_LOG_LOOKBACK_DAYS + 1). */
-export function workoutLogSelectableDates(): string[] {
-	const { minDate, maxDate } = workoutLogDateBounds();
-	const out: string[] = [];
-	const cur = new Date(minDate.slice(0, 10) + "T12:00:00");
-	const end = new Date(maxDate.slice(0, 10) + "T12:00:00");
-	if (Number.isNaN(cur.getTime()) || Number.isNaN(end.getTime()))
-		return [maxDate];
-	while (cur <= end) {
-		out.push(toLocalYMD(cur));
-		cur.setDate(cur.getDate() + 1);
-	}
-	return out;
-}
-
-/** Compact label for log-date chips (e.g. "Wed, Mar 19"). */
-export function formatLogDateChipLabel(ymd: string): string {
-	const d = new Date(String(ymd).slice(0, 10) + "T12:00:00");
-	if (Number.isNaN(d.getTime())) return ymd;
-	return d.toLocaleDateString("en-US", {
-		weekday: "short",
-		month: "short",
-		day: "numeric",
-	});
-}
-
-function toLocalYMD(d: Date): string {
-	return (
-		d.getFullYear() +
-		"-" +
-		String(d.getMonth() + 1).padStart(2, "0") +
-		"-" +
-		String(d.getDate()).padStart(2, "0")
-	);
-}
-
-/** Long display string for a YYYY-MM-DD (local). */
-export function formatDateDisplayYMD(ymd: string): string {
-	const d = new Date(String(ymd).slice(0, 10) + "T12:00:00");
-	if (Number.isNaN(d.getTime())) return ymd;
-	return d.toLocaleDateString("en-US", {
-		weekday: "long",
-		month: "long",
-		day: "numeric",
-		year: "numeric",
-	});
+/**
+ * Get today's calendar date (YYYY-MM-DD) in the given IANA timezone.
+ * Pass `now` to override the current time — useful in unit tests.
+ */
+export function todayInTz(timezone: string, now: Date = new Date()): DateString {
+  return formatInTz(now, timezone);
 }
 
 /**
- * 0-based challenge week index: seven-day windows anchored at `startDate` (typically
- * `CHALLENGE_START` from `config.ts`). Used for weekly gym/clean/junk caps in scoring.
+ * Get yesterday's calendar date (YYYY-MM-DD) in the given IANA timezone.
+ * Pass `now` to override the current time — useful in unit tests.
  */
-export function windowOf(date: string, startDate: string): number {
-	return Math.floor(dayIndex(date, startDate) / 7);
+export function yesterdayInTz(timezone: string, now: Date = new Date()): DateString {
+  return addDays(todayInTz(timezone, now), -1);
 }
 
-export function formatHistoryDate(val: unknown): string {
-	if (val == null || val === "" || String(val).trim() === "—") return "—";
-	const s = String(val).trim();
-	const d = s.includes("T") ? new Date(s) : new Date(s + "T00:00:00");
-	if (Number.isNaN(d.getTime())) return s;
-	return d.toLocaleDateString("en-US", {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	});
+// ---------------------------------------------------------------------------
+// Calendar arithmetic (timezone-safe)
+// ---------------------------------------------------------------------------
+
+/**
+ * Add N calendar days to a YYYY-MM-DD string. N may be negative.
+ * Uses UTC midnight arithmetic, which is invariant across DST changes.
+ */
+export function addDays(date: DateString, n: number): DateString {
+  const d = new Date(date + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
-/** History table: short weekday + date, e.g. `Sat, Mar 21, 2026` (local). */
-export function formatHistoryDateWithWeekday(val: unknown): string {
-	if (val == null || val === "" || String(val).trim() === "—") return "—";
-	const ymd = normalizeDateToYYYYMMDD(val);
-	const d = ymd
-		? new Date(ymd.slice(0, 10) + "T12:00:00")
-		: (() => {
-				const s = String(val).trim();
-				return s.includes("T") ? new Date(s) : new Date(s + "T00:00:00");
-			})();
-	if (Number.isNaN(d.getTime())) return String(val);
-	return d.toLocaleDateString("en-US", {
-		weekday: "short",
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	});
+/**
+ * Difference in calendar days between two YYYY-MM-DD strings (a − b).
+ * Positive when a is later than b.
+ */
+export function diffDays(a: DateString, b: DateString): number {
+  const msA = new Date(a + 'T00:00:00Z').getTime();
+  const msB = new Date(b + 'T00:00:00Z').getTime();
+  return Math.round((msA - msB) / 86_400_000);
 }
 
-export function formatHistoryTime(val: unknown): string {
-	if (val == null || val === "" || String(val).trim() === "—") return "—";
-	const s = String(val).trim();
-	if (s.includes("T")) {
-		const d = new Date(s);
-		if (!Number.isNaN(d.getTime()))
-			return d.toLocaleTimeString("en-US", {
-				hour: "numeric",
-				minute: "2-digit",
-				second: "2-digit",
-				hour12: true,
-			});
-	}
-	return s;
+/**
+ * Lexicographic comparison of two YYYY-MM-DD strings.
+ * Returns -1 if a is earlier, 0 if equal, 1 if a is later.
+ */
+export function compareDates(a: DateString, b: DateString): -1 | 0 | 1 {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Edit window
+// ---------------------------------------------------------------------------
+
+/**
+ * True if `date` is within the edit window: today or yesterday in the
+ * challenge timezone. This is the normal-user edit check; owner override
+ * is handled at the CRUD layer.
+ */
+export function isWithinEditWindow(
+  date: DateString,
+  timezone: string,
+  now: Date = new Date(),
+): boolean {
+  return date === todayInTz(timezone, now) || date === yesterdayInTz(timezone, now);
+}
+
+/**
+ * True if `date` is today in the challenge timezone.
+ */
+export function isToday(date: DateString, timezone: string, now: Date = new Date()): boolean {
+  return date === todayInTz(timezone, now);
+}
+
+/**
+ * True if `date` is yesterday in the challenge timezone.
+ */
+export function isYesterday(date: DateString, timezone: string, now: Date = new Date()): boolean {
+  return date === yesterdayInTz(timezone, now);
+}
+
+// ---------------------------------------------------------------------------
+// Week windows (weekAnchor-based, not ISO Monday-anchored)
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the 1-based challenge week number for a date.
+ * Week 1 starts on `weekAnchor`; each subsequent week is 7 days later.
+ * Returns 0 for dates before the anchor.
+ */
+export function getWeekNumber(date: DateString, weekAnchor: DateString): number {
+  const d = diffDays(date, weekAnchor);
+  if (d < 0) return 0;
+  return Math.floor(d / 7) + 1;
+}
+
+/**
+ * Get the start and end YYYY-MM-DD of the challenge week that contains
+ * `date`, anchored to `weekAnchor`. Dates before the anchor are treated as
+ * belonging to week 1.
+ */
+export function getWeekWindow(
+  date: DateString,
+  weekAnchor: DateString,
+): { start: DateString; end: DateString } {
+  const weekNum = Math.max(1, getWeekNumber(date, weekAnchor));
+  const start = addDays(weekAnchor, (weekNum - 1) * 7);
+  return { start, end: addDays(start, 6) };
+}
+
+// ---------------------------------------------------------------------------
+// Streak helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Given a sorted-ascending list of YYYY-MM-DD dates, return how many
+ * consecutive calendar days end on the last element in the list.
+ * Returns 0 for an empty list.
+ *
+ * Example: ['2024-06-10', '2024-06-14', '2024-06-15'] → 2
+ */
+export function countConsecutiveDaysAtEnd(sortedDates: readonly DateString[]): number {
+  if (sortedDates.length === 0) return 0;
+  let streak = 1;
+  for (let i = sortedDates.length - 1; i > 0; i--) {
+    const curr = sortedDates[i];
+    const prev = sortedDates[i - 1];
+    if (curr === undefined || prev === undefined) break;
+    if (diffDays(curr, prev) === 1) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
 }

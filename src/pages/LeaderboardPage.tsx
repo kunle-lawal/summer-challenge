@@ -1,306 +1,376 @@
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { fmtPts, getFreeCounts, getTotals, initials, ptsClass } from '../lib/scoring';
-import { useChallenge } from '../context/ChallengeContext';
+import { useChallenge } from '@/context/ChallengeContext';
+import { useSelectedMember } from '@/context/SelectedMemberContext';
+import { buildLeaderboard } from '@/lib/rules/aggregate';
+import { MemberBadge } from '@/components/ui/MemberBadge';
+import type { MemberStanding } from '@/types';
 
-const SectionHeader = styled.div`
-  margin-bottom: 1.75rem;
+// ── Styled components ─────────────────────────────────────────────────────────
+
+const SHeader = styled.header`
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid ${({ theme }) => theme.color.hair};
 `;
 
-const SectionTitle = styled.div`
+const Eyebrow = styled.div`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 10.5px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.color.ink3};
+`;
+
+const Title = styled.h1`
   font-family: ${({ theme }) => theme.font.display};
-  font-size: clamp(1.4rem, 4vw, 2rem);
-  font-weight: 900;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  color: ${({ theme }) => theme.color.text};
+  font-size: 30px;
+  font-weight: 400;
+  margin-top: 2px;
+  em { font-style: italic; }
 `;
 
-const SectionSub = styled.div`
-  font-size: 0.8rem;
-  color: ${({ theme }) => theme.color.muted2};
-  margin-top: 0.4rem;
+const Sub = styled.div`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 10.5px;
+  color: ${({ theme }) => theme.color.ink3};
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+`;
+
+const Body = styled.div`
+  padding: 0 16px 24px;
+`;
+
+const SegRow = styled.div`
+  margin: 14px 0;
+`;
+
+const Segs = styled.div`
+  display: inline-flex;
+  padding: 3px;
+  background: ${({ theme }) => theme.color.bg2};
+  border-radius: ${({ theme }) => theme.radii.pill};
+  gap: 2px;
+`;
+
+const SegBtn = styled.button<{ $active: boolean }>`
+  border: 0;
+  background: ${({ theme, $active }) => $active ? theme.color.surface : 'transparent'};
+  font: 500 12.5px/1 ${({ theme }) => theme.font.body};
+  color: ${({ theme, $active }) => $active ? theme.color.ink : theme.color.ink2};
+  padding: 7px 14px;
+  border-radius: ${({ theme }) => theme.radii.pill};
+  cursor: pointer;
+  box-shadow: ${({ $active }) => $active ? '0 1px 2px rgba(24,23,15,0.06)' : 'none'};
+  white-space: nowrap;
 `;
 
 const Podium = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 2rem;
-  align-items: end;
-
-  @media (max-width: 740px) {
-    grid-template-columns: 1fr;
-  }
+  align-items: flex-end;
+  gap: 6px;
+  padding: 16px 4px 0;
 `;
 
-const EmptyMsg = styled.div`
-  text-align: center;
-  padding: 3rem 1rem;
-  color: ${({ theme }) => theme.color.muted};
-  font-size: 0.8rem;
-  grid-column: 1 / -1;
-`;
-
-const PodiumCard = styled.div<{ $place: 1 | 2 | 3 }>`
-  border-radius: 14px;
-  padding: ${({ $place }) => ($place === 1 ? '1.75rem 1rem 1.25rem' : '1.25rem 1rem')};
-  text-align: center;
-  border: 1px solid ${({ theme, $place }) =>
-    $place === 1
-      ? 'rgba(232,160,32,0.4)'
-      : $place === 2
-        ? theme.color.podium2Border
-        : theme.color.podium3Border};
-  background: ${({ theme, $place }) =>
-    $place === 1
-      ? 'rgba(232,160,32,0.07)'
-      : $place === 2
-        ? theme.color.podium2
-        : theme.color.podium3};
-`;
-
-const PodiumPlace = styled.div<{ $place: 1 | 2 | 3 }>`
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  margin-bottom: 6px;
-  color: ${({ theme, $place }) =>
-    $place === 1
-      ? theme.color.gold
-      : $place === 2
-        ? '#94A3B8'
-        : '#B45309'};
-`;
-
-const PodiumAvatar = styled.div<{ $place: 1 | 2 | 3 }>`
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+const PodiumCol = styled.div<{ $rank: number }>`
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 0.75rem;
-  font-weight: 700;
-  margin: 0 auto 8px;
-  background: ${({ theme, $place }) =>
-    $place === 1
-      ? theme.color.goldDim
-      : $place === 2
-        ? 'rgba(148,163,184,0.1)'
-        : 'rgba(180,83,9,0.1)'};
-  color: ${({ theme, $place }) =>
-    $place === 1
-      ? theme.color.gold
-      : $place === 2
-        ? '#94A3B8'
-        : '#B45309'};
+  gap: 6px;
 `;
 
 const PodiumName = styled.div`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: ${({ theme }) => theme.color.text};
-  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: center;
+  margin-top: 4px;
 `;
 
-const PodiumScore = styled.div<{ $place: 1 | 2 | 3 }>`
+const PodiumPts = styled.div`
   font-family: ${({ theme }) => theme.font.display};
-  font-size: 1.6rem;
-  font-weight: 900;
+  font-size: 22px;
   line-height: 1;
-  color: ${({ theme, $place }) =>
-    $place === 1
-      ? theme.color.gold
-      : $place === 2
-        ? '#94A3B8'
-        : '#B45309'};
+  font-variant-numeric: tabular-nums;
+  font-style: italic;
 `;
 
-const PodiumPtsLabel = styled.div`
-  font-size: 0.6rem;
-  color: ${({ theme }) => theme.color.muted2};
-  margin-top: 2px;
+const PodiumBlock = styled.div<{ $height: number; $rank: number }>`
+  width: 100%;
+  height: ${({ $height }) => $height}px;
+  background: ${({ theme, $rank }) => $rank === 1 ? theme.color.accentTint : theme.color.surface2};
+  border: 1px solid ${({ theme, $rank }) => $rank === 1 ? theme.color.accent : theme.color.hair};
+  border-bottom: 0;
+  border-radius: ${({ theme }) => theme.radii.md} ${({ theme }) => theme.radii.md} 0 0;
+  margin-top: 6px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 8px;
 `;
 
-const Rankings = styled.div`
+const PodiumRank = styled.span<{ $rank: number }>`
+  font-family: ${({ theme }) => theme.font.display};
+  font-size: 36px;
+  line-height: 1;
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+  color: ${({ theme, $rank }) => $rank === 1 ? theme.color.accent : theme.color.ink3};
+`;
+
+const SectionLbl = styled.div`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 10.5px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.color.ink3};
+  padding: 18px 0 10px;
+`;
+
+const Card = styled.div`
   background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.border};
-  border-radius: 14px;
+  border: 1px solid ${({ theme }) => theme.color.hair};
+  border-radius: ${({ theme }) => theme.radii.md};
   overflow: hidden;
 `;
 
-const RankRow = styled.div<{ $header?: boolean }>`
+const LbRow = styled.div<{ $isYou: boolean; $rank: number }>`
   display: grid;
-  grid-template-columns: 44px 1fr 70px 80px 80px 90px 90px;
+  grid-template-columns: 28px 36px 1fr auto;
+  gap: 12px;
   align-items: center;
-  padding: ${({ $header }) => ($header ? '9px 16px' : '12px 16px')};
-  border-bottom: 1px solid ${({ theme }) => theme.color.border};
-  gap: 8px;
-  font-size: ${({ $header }) => ($header ? '0.62rem' : 'inherit')};
-
-  &:last-child {
-    border-bottom: none;
-  }
-
-  ${({ $header, theme }) =>
-    $header
-      ? `
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: ${theme.color.muted};
-    background: ${theme.color.surface2};
-  `
-      : `
-    &:hover {
-      background: ${theme.color.surface2};
-    }
-  `}
-
-  @media (max-width: 740px) {
-    grid-template-columns: 32px 1fr 70px 90px;
-    & > span:nth-child(4),
-    & > span:nth-child(5),
-    & > span:nth-child(6) {
-      display: none;
-    }
-  }
+  padding: 14px 12px;
+  border-bottom: 1px solid ${({ theme }) => theme.color.hair};
+  background: ${({ theme, $isYou }) => $isYou ? theme.color.accentTint : 'transparent'};
+  cursor: pointer;
+  &:last-child { border-bottom: 0; }
 `;
 
-const RankNum = styled.span`
+const Rank = styled.span<{ $rank: number }>`
   font-family: ${({ theme }) => theme.font.display};
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: ${({ theme }) => theme.color.muted};
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  font-style: ${({ $rank }) => $rank <= 3 ? 'normal' : 'italic'};
+  color: ${({ theme, $rank }) => $rank === 1 ? theme.color.accent : theme.color.ink3};
+  text-align: center;
 `;
 
-const RankName = styled.span`
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: ${({ theme }) => theme.color.text};
+const MemberInfo = styled.div`flex: 1; min-width: 0;`;
+
+const Name = styled.div`font-weight: 600; font-size: 14px;`;
+
+const SubLine = styled.div`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.color.ink3};
+  margin-top: 3px;
+`;
+
+const Pts = styled.div`
+  font-family: ${({ theme }) => theme.font.display};
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+`;
+
+const Expand = styled.div`
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  grid-column: 1 / -1;
+`;
+
+const BarRow = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
 `;
 
-const RankInitials = styled.span`
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: ${({ theme }) => theme.color.surface2};
-  display: flex;
-  align-items: center;
-  justify-content: center;
+const BarLabel = styled.span`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.color.ink3};
+  width: 56px;
+`;
+
+const Bar = styled.div`
+  flex: 1;
+  height: 6px;
+  background: ${({ theme }) => theme.color.bg2};
+  border-radius: ${({ theme }) => theme.radii.pill};
+  overflow: hidden;
+`;
+
+const BarFill = styled.div<{ $width: number; $negative: boolean }>`
+  height: 100%;
+  width: ${({ $width }) => Math.min(100, $width)}%;
+  background: ${({ theme, $negative }) => $negative ? theme.color.bad : theme.color.ink};
+  border-radius: ${({ theme }) => theme.radii.pill};
+`;
+
+const BarVal = styled.span`
   font-family: ${({ theme }) => theme.font.display};
-  font-size: 0.55rem;
-  font-weight: 700;
-  color: ${({ theme }) => theme.color.muted2};
-  flex-shrink: 0;
-`;
-
-const RankStat = styled.span<{ $tone?: 'pos' | 'neg' | 'zero'; $small?: boolean }>`
-  font-size: ${({ $small }) => ($small ? '0.7rem' : '0.82rem')};
+  font-size: 14px;
+  width: 40px;
   text-align: right;
-  color: ${({ theme, $tone }) =>
-    $tone === 'pos'
-      ? theme.color.green
-      : $tone === 'neg'
-        ? theme.color.red
-        : theme.color.muted2};
+  font-variant-numeric: tabular-nums;
 `;
 
-const PurpleEm = styled.span`
-  color: ${({ theme }) => theme.color.purple};
+const FootNote = styled.p`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 11px;
+  color: ${({ theme }) => theme.color.ink3};
+  padding: 16px 4px 0;
+  line-height: 1.5;
 `;
 
-const RankTotal = styled.span<{ $tone: 'pos' | 'neg' | 'zero' }>`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 0.9rem;
-  font-weight: 700;
-  text-align: right;
-  color: ${({ theme, $tone }) =>
-    $tone === 'pos'
-      ? theme.color.green
-      : $tone === 'neg'
-        ? theme.color.red
-        : theme.color.muted2};
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 40px 24px;
+  color: ${({ theme }) => theme.color.ink3};
+  font-size: 13.5px;
 `;
 
-const places = ['1st Place', '2nd Place', '3rd Place'] as const;
+// ── Component ─────────────────────────────────────────────────────────────────
+
+type ViewMode = 'total' | 'perrule' | 'avgday';
 
 export function LeaderboardPage() {
-  const { entries, profiles } = useChallenge();
-  const ranked = getTotals(entries, profiles);
-  const freeCounts = getFreeCounts(entries);
+  const navigate = useNavigate();
+  const { slug } = useParams<{ slug: string }>();
+  const { challenge, activeMembers, entries } = useChallenge();
+  const { selectedMemberId } = useSelectedMember();
+  const [view, setView] = useState<ViewMode>('total');
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const empty = entries.length === 0 && Object.keys(profiles).length === 0;
+  if (!challenge) return null;
+
+  const board = buildLeaderboard(challenge, activeMembers, entries);
+  const { standings } = board;
+  const podium = [standings[1], standings[0], standings[2]]; // 2nd, 1st, 3rd
+  const rest = standings.slice(3);
+
+  const rules = challenge.config.rules.filter(r => r.kind !== 'streak');
+  const maxPts = standings[0]?.totalPoints ?? 1;
+
+  function getSubLine(s: MemberStanding): string {
+    if (view === 'total') return `${s.daysLogged} days logged`;
+    if (view === 'perrule') {
+      return rules.slice(0, 3).map(r => `${r.name} ${(s.perRule[r.id] ?? 0).toFixed(0)}`).join(' · ');
+    }
+    if (s.daysLogged === 0) return '0/day';
+    return `${(s.totalPoints / s.daysLogged).toFixed(2)}/day · ${s.daysLogged} days`;
+  }
+
+  function getDisplayPts(s: MemberStanding): string {
+    if (view === 'avgday' && s.daysLogged > 0) {
+      return (s.totalPoints / s.daysLogged).toFixed(2);
+    }
+    return s.totalPoints.toFixed(1);
+  }
+
+  const weekNum = Math.max(1, Math.floor(
+    (new Date().getTime() - new Date(challenge.config.weekAnchor + 'T00:00:00Z').getTime()) / (7 * 86400000)
+  ) + 1);
 
   return (
-    <div>
-      <SectionHeader>
-        <SectionTitle>Leaderboard</SectionTitle>
-        <SectionSub>Overall standings including personal goal bonus points</SectionSub>
-      </SectionHeader>
+    <>
+      <SHeader>
+        <Eyebrow>{challenge.name} · Week {weekNum}</Eyebrow>
+        <Title>Lead<em>er</em>board</Title>
+        <Sub>{activeMembers.length} active · {board.totalEntries} entries</Sub>
+      </SHeader>
 
-      <Podium>
-        {empty ? (
-          <EmptyMsg>No data yet — log your first day!</EmptyMsg>
-        ) : (
-          ranked.slice(0, 3).map((r, i) => {
-            const place = (i + 1) as 1 | 2 | 3;
-            return (
-              <PodiumCard key={r.personId} $place={place}>
-                <PodiumPlace $place={place}>{places[i]}</PodiumPlace>
-                <PodiumAvatar $place={place}>{initials(r.name)}</PodiumAvatar>
-                <PodiumName>{r.name}</PodiumName>
-                <PodiumScore $place={place}>{r.pts}</PodiumScore>
-                <PodiumPtsLabel>
-                  {r.days} day{r.days !== 1 ? 's' : ''} logged
-                </PodiumPtsLabel>
-              </PodiumCard>
-            );
-          })
+      <Body>
+        <SegRow>
+          <Segs>
+            {(['total', 'perrule', 'avgday'] as ViewMode[]).map(v => (
+              <SegBtn key={v} $active={view === v} onClick={() => setView(v)}>
+                {v === 'total' ? 'Total' : v === 'perrule' ? 'Per rule' : 'Avg/day'}
+              </SegBtn>
+            ))}
+          </Segs>
+        </SegRow>
+
+        {/* Podium */}
+        {standings.length > 0 && (
+          <Podium>
+            {podium.map((s, i) => {
+              if (!s) return <div key={i} />;
+              const heights = [86, 104, 72];
+              const realRank = [2, 1, 3][i] ?? 1;
+              return (
+                <PodiumCol key={s.memberId} $rank={realRank}>
+                  <MemberBadge member={{ name: s.memberName }} isYou={s.memberId === selectedMemberId} size={realRank === 1 ? 'lg' : 'md'} />
+                  <PodiumName>{s.memberName}</PodiumName>
+                  <PodiumPts>{s.totalPoints.toFixed(1)}</PodiumPts>
+                  <PodiumBlock $height={heights[i] ?? 72} $rank={realRank}>
+                    <PodiumRank $rank={realRank}>{realRank}</PodiumRank>
+                  </PodiumBlock>
+                </PodiumCol>
+              );
+            })}
+          </Podium>
         )}
-      </Podium>
 
-      {!empty ? (
-        <Rankings>
-          <RankRow $header>
-            <span>#</span>
-            <span>Player</span>
-            <span style={{ textAlign: 'right' }}>Days</span>
-            <span style={{ textAlign: 'right' }}>Avg/Day</span>
-            <span style={{ textAlign: 'right' }}>Goal Pts</span>
-            <span style={{ textAlign: 'right' }}>Free Used</span>
-            <span style={{ textAlign: 'right' }}>Total Pts</span>
-          </RankRow>
-          {ranked.map((r, i) => {
-            const fc = freeCounts[r.personId] ?? { gym: 0, junk: 0 };
-            const avg = r.days
-              ? Math.round(((r.pts - r.profilePts) / r.days) * 10) / 10
-              : 0;
+        <SectionLbl>Standings</SectionLbl>
+
+        <Card>
+          {standings.length === 0 && <EmptyState>No entries yet. Start logging!</EmptyState>}
+          {standings.map(s => {
+            const isExp = expanded === s.memberId;
             return (
-              <RankRow key={r.personId}>
-                <RankNum>{i + 1}</RankNum>
-                <RankName>
-                  <RankInitials>{initials(r.name)}</RankInitials>
-                  {r.name}
-                </RankName>
-                <RankStat>{r.days}</RankStat>
-                <RankStat $tone={ptsClass(avg)}>{fmtPts(avg)}</RankStat>
-                <RankStat>
-                  <PurpleEm>+{r.profilePts}</PurpleEm>
-                </RankStat>
-                <RankStat $small>
-                  G:{fc.gym}/5 · J:{fc.junk}/5
-                </RankStat>
-                <RankTotal $tone={ptsClass(r.pts)}>{fmtPts(r.pts)}</RankTotal>
-              </RankRow>
+              <div key={s.memberId}>
+                <LbRow
+                  $isYou={s.memberId === selectedMemberId}
+                  $rank={s.rank}
+                  onClick={() => {
+                    setExpanded(isExp ? null : s.memberId);
+                    navigate(`/c/${slug}/m/${s.memberId}`);
+                  }}
+                >
+                  <Rank $rank={s.rank}>{s.rank}</Rank>
+                  <MemberBadge member={{ name: s.memberName }} isYou={s.memberId === selectedMemberId} />
+                  <MemberInfo>
+                    <Name>{s.memberName}</Name>
+                    <SubLine>{getSubLine(s)}</SubLine>
+                    {isExp && (
+                      <Expand>
+                        {rules.map(r => {
+                          const pts = s.perRule[r.id] ?? 0;
+                          return (
+                            <BarRow key={r.id}>
+                              <BarLabel>{r.name.slice(0, 8)}</BarLabel>
+                              <Bar>
+                                <BarFill $width={Math.abs(pts) / maxPts * 100} $negative={pts < 0} />
+                              </Bar>
+                              <BarVal>{pts > 0 ? '+' : ''}{pts.toFixed(0)}</BarVal>
+                            </BarRow>
+                          );
+                        })}
+                      </Expand>
+                    )}
+                  </MemberInfo>
+                  <div>
+                    <Pts>{getDisplayPts(s)}</Pts>
+                  </div>
+                </LbRow>
+              </div>
             );
           })}
-        </Rankings>
-      ) : null}
-    </div>
+          {rest.length > 0 && <div style={{ display: 'none' }}>{rest.length}</div>}
+        </Card>
+
+        <FootNote>
+          Tap a row to view member profile. Removed members are hidden · see History for full record.
+        </FootNote>
+      </Body>
+    </>
   );
 }

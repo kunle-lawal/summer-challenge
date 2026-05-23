@@ -1,35 +1,46 @@
-import { useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import styled from 'styled-components';
-import { useChallenge } from '../../context/ChallengeContext';
-import { NavBar } from './NavBar';
-import { SheetSpinner } from './SheetSpinner';
+import { useChallenge } from '@/context/ChallengeContext';
+import { BottomNav } from './BottomNav';
+import { TopBar } from './TopBar';
 
-const Main = styled.main`
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+const Page = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: ${({ theme }) => theme.color.surface};
+  position: relative;
+
+  @media (min-width: 768px) {
+    margin-left: 200px;
+  }
 `;
 
-const SECONDARY_ROUTES = ['/board', '/history'];
+const Main = styled.main`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Space for fixed bottom nav + safe area on mobile */
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+
+  @media (min-width: 768px) {
+    padding-bottom: 24px;
+  }
+`;
 
 export function Layout() {
-  const { pathname } = useLocation();
-  const { refreshFromSheets, syncing, loading, initError } = useChallenge();
-
-  useEffect(() => {
-    if (loading || initError) return;
-    if (!SECONDARY_ROUTES.includes(pathname)) return;
-    void refreshFromSheets();
-  }, [pathname, refreshFromSheets, loading, initError]);
-
+  const { challenge } = useChallenge();
   return (
     <>
-      <NavBar />
-      <Main>
-        <Outlet />
-      </Main>
-      <SheetSpinner visible={syncing && !loading && !initError} />
+      {challenge && <TopBar slug={challenge.slug} challengeName={challenge.name} />}
+      <Page>
+        <Main>
+          <Outlet />
+        </Main>
+        {challenge && <BottomNav slug={challenge.slug} />}
+      </Page>
     </>
   );
 }

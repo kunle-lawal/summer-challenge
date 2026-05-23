@@ -1,452 +1,937 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
-import styled from "styled-components";
-import { HistoryEntriesTable } from "../components/history/HistoryEntriesTable";
+import { useState, useMemo, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import styled, { css, keyframes } from "styled-components";
+import { useChallenge } from "@/context/ChallengeContext";
+import { useSelectedMember } from "@/context/SelectedMemberContext";
+import { upsertEntry } from "@/lib/entries";
+import { setTrackerConfig } from "@/lib/members";
+import { evaluateEntry } from "@/lib/rules/evaluate";
+import { buildWeeklySummary } from "@/lib/rules/aggregate";
 import {
-	PersonLogCard,
-	type LogFormRow,
-} from "../components/log/PersonLogCard";
-import { PersonalGoalPanel } from "../components/profile/PersonalGoalPanel";
-import { useChallenge } from "../context/ChallengeContext";
-import { useSelectedPerson } from "../context/SelectedPersonContext";
-import {
-	clampWorkoutLogDate,
-	formatDateDisplayYMD,
-	formatLogDateChipLabel,
-	today,
-	workoutLogSelectableDates,
-} from "../lib/dates";
-import { buildHistoryRows } from "../lib/history";
-import {
-	calcPersonalGoalPts,
-	calcPtsForLogDay,
-	fmtPts,
-	getTotals,
-	ptsClass,
-} from "../lib/scoring";
-import type { WorkoutEntry } from "../types";
+	todayInTz,
+	yesterdayInTz,
+	addDays,
+	isWithinEditWindow,
+	diffDays,
+} from "@/lib/dates";
+import { ArrowIcon, LockIcon } from "@/components/ui/Icons";
+import { RuleCardRouter } from "@/components/log/ruleCardRouter";
+import { CardWrap } from "@/components/log/RuleCard";
+import { StreakBand } from "@/components/log/StreakRuleCard";
+import type {
+	Entry,
+	DateString,
+	RawEntryValue,
+	TrackerDirection,
+	StreakRule,
+} from "@/types";
+import { isStreakRule } from "@/types";
 
-const LOG_HISTORY_PAGE_SIZE = 20;
+// ── Animations ────────────────────────────────────────────────────────────────
 
-const SectionHeader = styled.div`
-	margin-bottom: 1.75rem;
+const tick = keyframes`
+  0% { transform: translateY(4px); opacity: 0; }
+  60% { transform: translateY(-2px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
 `;
 
-const SectionTitle = styled.div`
-	font-family: ${({ theme }) => theme.font.display};
-	font-size: clamp(1.4rem, 4vw, 2rem);
-	font-weight: 900;
-	line-height: 1.1;
-	letter-spacing: -0.02em;
-	color: ${({ theme }) => theme.color.text};
+const slideUp = keyframes`
+  from { transform: translateY(4px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 `;
 
-const SectionSub = styled.div`
-	font-size: 0.8rem;
-	color: ${({ theme }) => theme.color.muted2};
-	margin-top: 0.4rem;
-`;
+// ── Styled components ─────────────────────────────────────────────────────────
 
-const TotalPtsBanner = styled.div`
-	margin-top: 0.85rem;
-	padding: 10px 14px;
-	background: ${({ theme }) => theme.color.surface};
-	border: 1px solid ${({ theme }) => theme.color.border};
-	border-radius: ${({ theme }) => theme.radii.md};
-	font-size: 0.82rem;
-	color: ${({ theme }) => theme.color.muted2};
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex-wrap: wrap;
-`;
-
-const TotalPtsValue = styled.span<{
-	$tone: ReturnType<typeof ptsClass>;
-}>`
-	font-family: ${({ theme }) => theme.font.display};
-	font-weight: 800;
-	font-size: 0.95rem;
-	color: ${({ theme, $tone }) =>
-		$tone === "pos"
-			? theme.color.green
-			: $tone === "neg"
-				? theme.color.red
-				: theme.color.muted2};
-`;
-
-const ScoringKey = styled.div`
-	display: flex;
-	gap: 8px;
-	flex-wrap: wrap;
-	margin-bottom: 1.75rem;
-`;
-
-const KeyItem = styled.div`
-	background: ${({ theme }) => theme.color.surface};
-	border: 1px solid ${({ theme }) => theme.color.border};
-	border-radius: ${({ theme }) => theme.radii.md};
-	padding: 7px 13px;
-	font-size: 0.72rem;
-	color: ${({ theme }) => theme.color.muted2};
-	display: flex;
-	align-items: center;
-	gap: 6px;
-`;
-
-const KeyVal = styled.span<{
-	$variant: "pos" | "neg" | "blue" | "purple" | "neutral";
-}>`
-	font-weight: 600;
-	font-size: 0.78rem;
-	color: ${({ theme, $variant }) =>
-		$variant === "pos"
-			? theme.color.green
-			: $variant === "neg"
-				? theme.color.red
-				: $variant === "blue"
-					? theme.color.blue
-					: $variant === "purple"
-						? theme.color.purple
-						: theme.color.muted2};
-`;
-
-const PersonCards = styled.div`
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-`;
-
-const GoalBlock = styled.div`
-	margin-top: 2.5rem;
-	padding-top: 2rem;
-	border-top: 1px solid ${({ theme }) => theme.color.border};
-`;
-
-const HistoryBlock = styled.div`
-	margin-top: 2.5rem;
-	padding-top: 2rem;
-	border-top: 1px solid ${({ theme }) => theme.color.border};
-`;
-
-const LogDateRow = styled.div`
+const LogHeader = styled.header`
 	display: flex;
 	align-items: flex-start;
 	gap: 12px;
-	flex-wrap: wrap;
-	margin-bottom: 1.25rem;
+	padding: 12px 16px 14px;
+	border-bottom: 1px solid ${({ theme }) => theme.color.hair};
+	background: ${({ theme }) => theme.color.surface};
+	position: sticky;
+	top: 0;
+	z-index: 10;
 `;
 
-const LogDateChips = styled.div`
-	display: flex;
-	gap: 8px;
-	flex-wrap: wrap;
+const HeaderInfo = styled.div`
 	flex: 1;
 	min-width: 0;
 `;
 
-const DateChip = styled.button<{ $selected: boolean }>`
-	flex: 1;
-	min-width: 76px;
-	max-width: 140px;
+const Eyebrow = styled.div`
+	font-family: ${({ theme }) => theme.font.mono};
+	font-size: 10.5px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: ${({ theme }) => theme.color.ink3};
+`;
+
+const MemberRow = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 2px;
+`;
+
+const MemberName = styled.span`
+	font-weight: 600;
+	font-size: 15px;
+	color: ${({ theme }) => theme.color.ink};
+`;
+
+const DotSep = styled.span`
+	width: 3px;
+	height: 3px;
+	border-radius: 50%;
+	background: ${({ theme }) => theme.color.ink4};
+	display: inline-block;
+`;
+
+const DateLabel = styled.span`
+	font-family: ${({ theme }) => theme.font.mono};
+	font-size: 11px;
+	color: ${({ theme }) => theme.color.ink3};
+	letter-spacing: 0.04em;
+`;
+
+const TotalPill = styled.div`
+	background: ${({ theme }) => theme.color.ink};
+	color: ${({ theme }) => theme.color.surface};
+	padding: 8px 12px;
+	border-radius: ${({ theme }) => theme.radii.pill};
+	display: flex;
+	align-items: baseline;
+	gap: 4px;
+	font-variant-numeric: tabular-nums;
+	flex-shrink: 0;
+`;
+
+const TotalVal = styled.span`
+	font-family: ${({ theme }) => theme.font.display};
+	font-size: 18px;
+	line-height: 1;
+	font-style: italic;
+`;
+
+const TotalLbl = styled.span`
+	font-family: ${({ theme }) => theme.font.mono};
+	font-size: 9.5px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	opacity: 0.7;
+`;
+
+const IconBtn = styled.button`
+	width: 36px;
+	height: 36px;
+	border-radius: ${({ theme }) => theme.radii.md};
+	background: ${({ theme }) => theme.color.surface};
+	border: 1px solid ${({ theme }) => theme.color.hair};
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	color: ${({ theme }) => theme.color.ink};
+	flex-shrink: 0;
+	margin-top: 2px;
+	svg {
+		width: 18px;
+		height: 18px;
+		stroke: currentColor;
+		stroke-width: 1.6;
+		fill: none;
+	}
+`;
+
+const ScreenBody = styled.div`
+	padding: 0 16px 80px;
+	overflow-y: auto;
+`;
+
+const DateStrip = styled.div`
+	display: flex;
+	gap: 6px;
+	overflow-x: auto;
+	scrollbar-width: none;
+	-webkit-overflow-scrolling: touch;
+	margin: 0 -16px;
+	padding: 4px 16px 8px;
+	&::-webkit-scrollbar {
+		display: none;
+	}
+`;
+
+const DateChip = styled.button<{ $state: string; $selected: boolean }>`
+	flex: 0 0 auto;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 2px;
-	padding: 10px 8px;
+	padding: 8px 10px 10px;
 	border-radius: ${({ theme }) => theme.radii.md};
 	border: 1px solid
-		${({ theme, $selected }) =>
-			$selected ? theme.color.gold : "rgba(232, 160, 32, 0.38)"};
-	background: ${({ $selected }) =>
-		$selected ? "rgba(232, 160, 32, 0.22)" : "rgba(232, 160, 32, 0.08)"};
-	cursor: pointer;
-	font-family: ${({ theme }) => theme.font.body};
-	transition:
-		border-color 0.15s,
-		background 0.15s;
+		${({ theme, $state, $selected }) =>
+			$state === "today"
+				? theme.color.ink
+				: $selected
+					? theme.color.ink
+					: theme.color.hair};
+	background: ${({ theme, $state }) =>
+		$state === "today" ? theme.color.ink : theme.color.surface};
+	min-width: 52px;
+	cursor: ${({ $state }) => ($state === "future" ? "not-allowed" : "pointer")};
+	opacity: ${({ $state }) =>
+		$state === "future" ? 0.35 : $state === "locked" ? 0.55 : 1};
+	position: relative;
+`;
 
-	&:focus-visible {
-		outline: 2px solid ${({ theme }) => theme.color.gold};
-		outline-offset: 2px;
+const ChipDay = styled.span<{ $today: boolean }>`
+	font-family: ${({ theme }) => theme.font.mono};
+	font-size: 9px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: ${({ theme, $today }) =>
+		$today ? theme.color.surface : theme.color.ink3};
+`;
+
+const ChipNum = styled.span<{ $today: boolean }>`
+	font-family: ${({ theme }) => theme.font.display};
+	font-size: 22px;
+	line-height: 1.05;
+	margin-top: 2px;
+	color: ${({ theme, $today }) =>
+		$today ? theme.color.surface : theme.color.ink};
+`;
+
+const ChipDot = styled.span`
+	position: absolute;
+	bottom: 4px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: ${({ theme }) => theme.color.accent};
+`;
+
+const Banner = styled.div<{ $variant?: "warn" | "locked" | "ended" | "pre" }>`
+	padding: 14px 16px;
+	border-radius: ${({ theme }) => theme.radii.md};
+	border: 1px solid
+		${({ theme, $variant }) =>
+			$variant === "ended" || $variant === "pre"
+				? theme.color.hair2
+				: $variant === "warn"
+					? theme.color.gold
+					: $variant === "locked"
+						? theme.color.ink3
+						: theme.color.accent};
+	background: ${({ theme, $variant }) =>
+		$variant === "ended" || $variant === "pre"
+			? theme.color.bg2
+			: $variant === "warn"
+				? "rgba(180,138,42,0.10)"
+				: $variant === "locked"
+					? theme.color.bg2
+					: theme.color.accentTint};
+	margin-bottom: 14px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	border-left: 2px solid
+		${({ theme, $variant }) =>
+			$variant === "ended"
+				? "transparent"
+				: $variant === "pre"
+					? "transparent"
+					: $variant === "warn"
+						? theme.color.gold
+						: $variant === "locked"
+							? theme.color.ink3
+							: theme.color.accent};
+	border-radius: ${({ $variant }) =>
+		$variant === "ended" || $variant === "pre" ? "8px" : "0 8px 8px 0"};
+	svg {
+		width: 14px;
+		height: 14px;
+		stroke: ${({ theme }) => theme.color.ink3};
+		stroke-width: 1.6;
+		fill: none;
+		flex-shrink: 0;
 	}
+`;
 
-	&:hover {
-		border-color: ${({ theme }) => theme.color.gold};
-		background: ${({ $selected }) =>
-			$selected ? "rgba(232, 160, 32, 0.24)" : "rgba(232, 160, 32, 0.14)"};
+const BannerTitle = styled.strong`
+	font-weight: 600;
+	font-size: 14px;
+	display: block;
+	margin-bottom: 4px;
+`;
+
+const BannerBody = styled.div`
+	font-size: 12.5px;
+	color: ${({ theme }) => theme.color.ink3};
+`;
+
+const EditBannerKey = styled.span`
+	font-family: ${({ theme }) => theme.font.mono};
+	font-size: 10.5px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: ${({ theme }) => theme.color.ink};
+	font-weight: 500;
+`;
+
+const EditBannerText = styled.span`
+	font-size: 12.5px;
+	color: ${({ theme }) => theme.color.ink3};
+`;
+
+const WeekStrip = styled.div`
+	background: ${({ theme }) => theme.color.surface2};
+	border: 1px solid ${({ theme }) => theme.color.hair};
+	border-radius: ${({ theme }) => theme.radii.md};
+	padding: 12px 14px;
+	margin-bottom: 14px;
+`;
+
+const WeekHead = styled.div`
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-bottom: 10px;
+`;
+
+const WeekStats = styled.div`
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 10px;
+`;
+
+const WeekStat = styled.div`
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+`;
+
+const WeekVal = styled.div`
+	font-family: ${({ theme }) => theme.font.display};
+	font-size: 26px;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+	span.dim {
+		font-size: 14px;
+		color: ${({ theme }) => theme.color.ink3};
+		font-style: italic;
 	}
 `;
 
-const DateChipPrimary = styled.span`
-	font-size: 0.7rem;
-	font-weight: 700;
-	line-height: 1.2;
-	text-align: center;
-	color: ${({ theme }) => theme.color.text};
+const WeekLbl = styled.div`
+	font-family: ${({ theme }) => theme.font.mono};
+	font-size: 9.5px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: ${({ theme }) => theme.color.ink3};
 `;
 
-const DateChipSub = styled.span`
-	font-size: 0.58rem;
-	line-height: 1.2;
-	text-align: center;
-	color: ${({ theme }) => theme.color.muted2};
+const RulesCol = styled.div`
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
 `;
 
-function emptyRow(): LogFormRow {
-	return { gym: "", steps: "", junk: "" };
+/** Wraps a rule card + any streak bands. When $hasStreak, the card's bottom corners are squared. */
+const RuleGroup = styled.div<{ $hasStreak?: boolean }>`
+  display: flex;
+  flex-direction: column;
+  ${({ $hasStreak }) =>
+    $hasStreak &&
+    css`
+      > ${CardWrap} {
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+      }
+    `}
+`;
+
+const ToastWrap = styled.div`
+	position: fixed;
+	left: 16px;
+	right: 16px;
+	bottom: 88px;
+	z-index: 100;
+	pointer-events: none;
+	max-width: 448px;
+	margin: 0 auto;
+`;
+
+const ToastEl = styled.div`
+	background: ${({ theme }) => theme.color.ink};
+	color: ${({ theme }) => theme.color.surface};
+	padding: 10px 14px;
+	border-radius: ${({ theme }) => theme.radii.pill};
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	box-shadow: 0 8px 20px -8px rgba(24, 23, 15, 0.4);
+	animation: ${slideUp} 0.35s cubic-bezier(0.2, 0.7, 0.3, 1.2);
+`;
+
+const ToastDot = styled.span`
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: ${({ theme }) => theme.color.accent};
+	flex-shrink: 0;
+`;
+
+const TotalAnim = styled.div`
+	animation: ${tick} 0.35s cubic-bezier(0.2, 0.7, 0.3, 1.2);
+`;
+
+const BodySm = styled.span`
+	font-family: ${({ theme }) => theme.font.mono};
+	font-size: 10.5px;
+	color: ${({ theme }) => theme.color.ink3};
+	letter-spacing: 0.04em;
+`;
+
+const FootNote = styled.p`
+	font-family: ${({ theme }) => theme.font.mono};
+	font-size: 11px;
+	color: ${({ theme }) => theme.color.ink3};
+	padding: 20px 4px 4px;
+	line-height: 1.5;
+`;
+
+const EmptyState = styled.div`
+	text-align: center;
+	padding: 40px 24px;
+	color: ${({ theme }) => theme.color.ink3};
+`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getDateLabel(date: DateString): string {
+	const d = new Date(date + "T00:00:00Z");
+	return d.toLocaleDateString("en-US", {
+		weekday: "short",
+		month: "short",
+		day: "numeric",
+		timeZone: "UTC",
+	});
 }
 
+function formatDayNum(date: DateString): string {
+	return date.slice(8); // DD
+}
+
+function formatDayName(date: DateString, isToday: boolean): string {
+	if (isToday) return "TODAY";
+	const d = new Date(date + "T00:00:00Z");
+	return d
+		.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })
+		.toUpperCase();
+}
+
+interface DateChipData {
+	date: DateString;
+	state: "today" | "logged" | "locked" | "future";
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function LogDayPage() {
-	const { pathname } = useLocation();
-	const { person } = useSelectedPerson();
-	const { entries, profiles, updateCache, postToSheets, clearGeneration } =
-		useChallenge();
-	const [formRow, setFormRow] = useState<LogFormRow>(emptyRow);
-	const [confirmOpen, setConfirmOpen] = useState(false);
-	const [validation, setValidation] = useState<string | null>(null);
-	const [logDate, setLogDate] = useState(today);
+	const navigate = useNavigate();
+	const { slug } = useParams<{ slug: string }>();
+	const { challenge, entries, members, isEnded } = useChallenge();
+	const { selectedMemberId } = useSelectedMember();
 
-	const personId = person?.id ?? "";
+	const [selectedDate, setSelectedDate] = useState<DateString | null>(null);
+	const [saving, setSaving] = useState(false);
+	const [toast, setToast] = useState<{ msg: string; sub: string } | null>(null);
+	const [toastKey, setToastKey] = useState(0);
 
-	/** Newest first (today left); recomputed each render so the window stays correct after midnight. */
-	const logDateChipOrder = [...workoutLogSelectableDates()];
+	if (!challenge || !selectedMemberId) return null;
 
-	const myHistoryRows = useMemo(
-		() =>
-			personId ? buildHistoryRows(entries, profiles, [], { personId }) : [],
-		[entries, personId, profiles],
+	const tz = challenge.config.timezone;
+	const today = todayInTz(tz);
+	const yesterday = yesterdayInTz(tz);
+
+	const activeDate = selectedDate ?? today;
+
+	const member = members.find((m) => m.id === selectedMemberId);
+	if (!member) return null;
+
+	const memberEntries = useMemo(
+		() => entries.filter((e) => e.memberId === selectedMemberId),
+		[entries, selectedMemberId],
 	);
 
-	const profilePtsTotal = useMemo(
-		() => calcPersonalGoalPts(personId ? profiles[personId] : undefined),
-		[profiles, personId],
+	const loggedDates = useMemo(
+		() => new Set(memberEntries.map((e) => e.date)),
+		[memberEntries],
 	);
 
-	const challengeTotalPts = useMemo(() => {
-		if (!personId) return 0;
-		return (
-			getTotals(entries, profiles).find((t) => t.personId === personId)?.pts ??
-			0
-		);
-	}, [entries, personId, profiles]);
+	const currentEntry: Entry | undefined = memberEntries.find(
+		(e) => e.date === activeDate,
+	);
 
-	const totalPtsTone = ptsClass(challengeTotalPts);
+	// Build date strip: last 6 days + today + 2 future
+	const dateChips = useMemo((): DateChipData[] => {
+		const chips: DateChipData[] = [];
+		for (let i = -5; i <= 2; i++) {
+			const d = addDays(today, i);
+			let state: DateChipData["state"];
+			if (d === today) state = "today";
+			else if (d > today) state = "future";
+			else if (loggedDates.has(d)) state = "logged";
+			else state = "locked";
+			chips.push({ date: d, state });
+		}
+		return chips;
+	}, [today, loggedDates]);
 
-	useEffect(() => {
-		if (pathname !== "/log") return;
-		setLogDate(today());
-	}, [pathname]);
+	const isLocked = !isWithinEditWindow(activeDate, tz) || isEnded;
 
-	useEffect(() => {
-		if (clearGeneration === 0) return;
-		setLogDate(today());
-	}, [clearGeneration]);
+	const isPreStart = today < challenge.config.startDate;
 
-	useEffect(() => {
-		setLogDate(today());
-	}, [personId]);
+	const weeklySummary = useMemo(
+		() => buildWeeklySummary(challenge, member, memberEntries, activeDate),
+		[challenge, member, memberEntries, activeDate],
+	);
 
-	useEffect(() => {
-		if (!personId) return;
-		const saved = entries.find(
-			(e) => e.personId === personId && e.date === logDate,
-		);
-		if (saved) {
-			setFormRow({
-				gym: saved.gym,
-				steps: saved.steps === 0 ? "" : String(saved.steps),
-				junk: saved.junk,
+	const evaluated = useMemo(() => {
+		if (!currentEntry) return {};
+		return currentEntry
+			? Object.fromEntries(
+					Object.entries(
+						evaluateEntry(challenge, currentEntry, member, memberEntries)
+							.perRule,
+					),
+				)
+			: {};
+	}, [challenge, currentEntry, member, memberEntries]);
+
+	const totalPoints = useMemo(() => {
+		return Object.values(evaluated).reduce((s, r) => s + r.points, 0);
+	}, [evaluated]);
+
+	const showToast = useCallback((msg: string, sub: string) => {
+		setToast({ msg, sub });
+		setToastKey((k) => k + 1);
+		setTimeout(() => setToast(null), 2000);
+	}, []);
+
+	const handleSave = useCallback(
+		async (ruleId: string, value: RawEntryValue) => {
+			if (saving || isLocked || isEnded) return;
+			setSaving(true);
+
+			try {
+				const newValues = { ...(currentEntry?.values ?? {}), [ruleId]: value };
+				const result = await upsertEntry(
+					challenge.id,
+					selectedMemberId,
+					activeDate,
+					newValues,
+					{ memberId: selectedMemberId, isOwner: false },
+				);
+
+				if (result.ok) {
+					const rule = challenge.config.rules.find((r) => r.id === ruleId);
+					showToast(
+						rule?.name ?? "Logged",
+						result.action === "created" ? "Entry saved" : "Updated",
+					);
+				} else {
+					showToast("Could not save", result.reason.replace(/_/g, " "));
+				}
+			} catch {
+				showToast("Error", "Please try again");
+			} finally {
+				setSaving(false);
+			}
+		},
+		[
+			saving,
+			isLocked,
+			isEnded,
+			currentEntry,
+			challenge,
+			selectedMemberId,
+			activeDate,
+			showToast,
+		],
+	);
+
+	const handleSetTrackerGoal = useCallback(
+		async (cfg: {
+			ruleId: string;
+			startVal: number;
+			goalVal: number;
+			direction: TrackerDirection;
+		}) => {
+			await setTrackerConfig(challenge.id, selectedMemberId, cfg, {
+				memberId: selectedMemberId,
+				isOwner: false,
 			});
-		} else {
-			setFormRow(emptyRow());
+		},
+		[challenge.id, selectedMemberId],
+	);
+
+	const rules = [...challenge.config.rules].sort((a, b) => a.order - b.order);
+
+	// Split streak rules out so they can be attached to the rule they track
+	const streakRules = useMemo(
+		() => rules.filter(isStreakRule) as StreakRule[],
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[challenge.config.rules],
+	);
+
+	const streaksByTarget = useMemo(() => {
+		const map = new Map<string, StreakRule[]>();
+		for (const sr of streakRules) {
+			const arr = map.get(sr.ruleRef) ?? [];
+			arr.push(sr);
+			map.set(sr.ruleRef, arr);
 		}
-	}, [logDate, personId, entries, clearGeneration]);
+		return map;
+	}, [streakRules]);
 
-	useEffect(() => {
-		setConfirmOpen(false);
-		setValidation(null);
-	}, [logDate, personId, clearGeneration, pathname]);
-
-	const setRow = useCallback((row: LogFormRow) => {
-		setFormRow(row);
-		setValidation(null);
-		setConfirmOpen(false);
-	}, []);
-
-	const clickSave = useCallback(() => {
-		setValidation(null);
-		if (!formRow.gym || !formRow.junk) {
-			const missing: string[] = [];
-			if (!formRow.gym) missing.push("Gym");
-			if (!formRow.junk) missing.push("Junk Food");
-			setValidation(`Please select: ${missing.join(" and ")}`);
-			setConfirmOpen(false);
-			return;
+	// Current streak count for each streak rule (same algorithm as ruleCardRouter)
+	const streakCounts = useMemo(() => {
+		const counts: Record<string, number> = {};
+		for (const sr of streakRules) {
+			const positive = memberEntries
+				.filter((e) => {
+					const v = e.values[sr.ruleRef];
+					return (
+						v === "yes" ||
+						v === "free" ||
+						v === "clean" ||
+						typeof v === "number"
+					);
+				})
+				.sort((a, b) => a.date.localeCompare(b.date));
+			let streak = 0;
+			for (let i = positive.length - 1; i >= 0; i--) {
+				if (i === positive.length - 1) {
+					streak = 1;
+					continue;
+				}
+				const curr = positive[i];
+				const prev = positive[i - 1];
+				if (!curr || !prev) break;
+				const diffMs =
+					new Date(curr.date + "T00:00:00Z").getTime() -
+					new Date(prev.date + "T00:00:00Z").getTime();
+				if (diffMs === 86_400_000) {
+					streak++;
+				} else {
+					break;
+				}
+			}
+			counts[sr.id] = Math.min(streak, sr.daysRequired);
 		}
-		setConfirmOpen(true);
-	}, [formRow.gym, formRow.junk]);
+		return counts;
+	}, [streakRules, memberEntries]);
 
-	const cancelConfirm = useCallback(() => {
-		setConfirmOpen(false);
-	}, []);
-
-	const confirmSave = useCallback(() => {
-		if (!personId) return;
-		const date = logDate;
-		const time = new Date().toLocaleTimeString("en-US", {
-			hour: "numeric",
-			minute: "2-digit",
-			second: "2-digit",
-			hour12: true,
-		});
-		const entry: WorkoutEntry = {
-			date,
-			personId,
-			time,
-			gym: formRow.gym,
-			steps: parseFloat(formRow.steps) || 0,
-			junk: formRow.junk,
-			pts: calcPtsForLogDay(
-				formRow.gym,
-				formRow.steps,
-				formRow.junk,
-				entries,
-				personId,
-				date,
+	// Streak rules whose tracked rule no longer exists → render standalone below the list
+	const orphanedStreakRules = useMemo(
+		() =>
+			streakRules.filter(
+				(sr) => !rules.find((r) => r.id === sr.ruleRef && !isStreakRule(r)),
 			),
-			lockedDay: true,
-		};
+		[streakRules, rules],
+	);
 
-		updateCache((prev) => {
-			const idx = prev.entries.findIndex(
-				(e) => e.date === date && e.personId === personId,
-			);
-			const nextEntries =
-				idx >= 0
-					? prev.entries.map((e, i) => (i === idx ? entry : e))
-					: [...prev.entries, entry];
-			return { ...prev, entries: nextEntries };
-		});
+	// Hours remaining until the edit window for yesterday closes (midnight in tz)
+	const editWindowHoursLeft = useMemo(() => {
+		if (activeDate !== yesterday) return null;
+		// Tomorrow midnight UTC = end of yesterday in tz (approximate — good enough for display)
+		const nowMs = Date.now();
+		const tzToday = todayInTz(tz);
+		// End of today = start of tomorrow midnight UTC
+		const endOfWindowMs =
+			new Date(tzToday + "T00:00:00Z").getTime() + 86_400_000;
+		const msLeft = endOfWindowMs - nowMs;
+		if (msLeft <= 0) return 0;
+		return Math.ceil(msLeft / 3_600_000);
+	}, [activeDate, yesterday, tz]);
 
-		void postToSheets("saveWorkout", entry);
-		setConfirmOpen(false);
-	}, [entries, formRow, logDate, personId, postToSheets, updateCache]);
+	// Compute human-readable "logged at" timestamp for locked cards
+	const lockedAt = useMemo(() => {
+		const ts = currentEntry?.updatedAt as unknown as
+			| { seconds: number }
+			| null
+			| undefined;
+		if (!ts?.seconds) return undefined;
+		const d = new Date(ts.seconds * 1000);
+		const h = d.getHours(),
+			m = d.getMinutes().toString().padStart(2, "0");
+		const ampm = h >= 12 ? "PM" : "AM";
+		return `${h % 12 || 12}:${m} ${ampm}`;
+	}, [currentEntry]);
 
-	if (!person) return null;
+	const weekNum = weeklySummary.weekNumber;
+	const totalDays = challenge.config.endDate
+		? diffDays(challenge.config.endDate, challenge.config.startDate) + 1
+		: null;
+	const totalWeeks = totalDays ? Math.ceil(totalDays / 7) : null;
+	const daysLeft = challenge.config.endDate
+		? Math.max(0, diffDays(challenge.config.endDate, today))
+		: null;
+
+	// Week summary display: cap/binary rules
+	const weekStatRules = rules
+		.filter((r) => r.kind === "binary" || r.kind === "penalty")
+		.slice(0, 2);
+	const freeStatRule = rules.find(
+		(r) => r.kind === "binary" && "freePasses" in r && r.freePasses,
+	);
 
 	return (
-		<div>
-			<SectionHeader>
-				<SectionTitle>Workout log</SectionTitle>
-				<SectionSub style={{ fontSize: "1rem" }}>
-					{person.name} · {formatDateDisplayYMD(logDate)}
-				</SectionSub>
-				<TotalPtsBanner>
-					<span>Total points (workouts + personal goal)</span>
-					<TotalPtsValue $tone={totalPtsTone}>
-						{fmtPts(challengeTotalPts)}
-					</TotalPtsValue>
-				</TotalPtsBanner>
-			</SectionHeader>
-
-			<LogDateRow>
-				<LogDateChips
-					role="group"
-					aria-label="Choose day to log (today and the previous 3 days)"
+		<>
+			<LogHeader>
+				<IconBtn
+					onClick={() => navigate(`/c/${slug}`)}
+					aria-label="Back"
+					style={{ marginTop: 2 }}
 				>
-					{logDateChipOrder.map((d) => {
-						const isCalToday = d === today();
-						const selected = d === logDate;
+					<ArrowIcon />
+				</IconBtn>
+				<HeaderInfo>
+					<Eyebrow>Log day</Eyebrow>
+					<MemberRow>
+						<MemberName>{member.name}</MemberName>
+						<DotSep />
+						<DateLabel>{getDateLabel(activeDate)}</DateLabel>
+					</MemberRow>
+				</HeaderInfo>
+				<TotalAnim key={toastKey}>
+					<TotalPill>
+						<TotalVal>+{totalPoints.toFixed(1)}</TotalVal>
+						<TotalLbl>today</TotalLbl>
+					</TotalPill>
+				</TotalAnim>
+			</LogHeader>
+
+			<ScreenBody>
+				{/* Date strip */}
+				<DateStrip>
+					{dateChips.map(({ date, state }) => {
+						const isSelected = date === activeDate;
+						const hasEntry = loggedDates.has(date);
 						return (
 							<DateChip
-								key={d}
-								type="button"
-								$selected={selected}
-								aria-pressed={selected}
-								aria-label={`Log ${formatDateDisplayYMD(d)}`}
-								onClick={() => setLogDate(clampWorkoutLogDate(d))}
+								key={date}
+								$state={state}
+								$selected={isSelected}
+								onClick={() => state !== "future" && setSelectedDate(date)}
 							>
-								<DateChipPrimary>
-									{isCalToday ? "Today" : formatLogDateChipLabel(d)}
-								</DateChipPrimary>
-								{isCalToday ? (
-									<DateChipSub>{formatLogDateChipLabel(d)}</DateChipSub>
-								) : null}
+								<ChipDay $today={state === "today"}>
+									{formatDayName(date, state === "today")}
+								</ChipDay>
+								<ChipNum $today={state === "today"}>
+									{formatDayNum(date)}
+								</ChipNum>
+								{hasEntry && state !== "today" && <ChipDot />}
 							</DateChip>
 						);
 					})}
-				</LogDateChips>
-			</LogDateRow>
+				</DateStrip>
 
-			<ScoringKey>
-				<KeyItem>
-					<KeyVal $variant="pos">+1</KeyVal> Went to gym
-				</KeyItem>
-				<KeyItem>
-					<KeyVal $variant="neg">0</KeyVal> Skipped gym
-				</KeyItem>
-				<KeyItem>
-					<KeyVal $variant="pos">+1</KeyVal> Ate clean
-				</KeyItem>
-				<KeyItem>
-					<KeyVal $variant="neg">−1</KeyVal> Ate junk (2nd+ in challenge week)
-				</KeyItem>
-				<KeyItem>
-					<KeyVal $variant="neutral">0–5</KeyVal> Steps (10k = 5pts)
-				</KeyItem>
-				<KeyItem>
-					<KeyVal $variant="blue">★ Free</KeyVal> 5 uses max each
-				</KeyItem>
-				<KeyItem>
-					<KeyVal $variant="purple">0–30</KeyVal> Personal goal
-				</KeyItem>
-			</ScoringKey>
+				{/* State banners */}
+				{isEnded && (
+					<Banner $variant="ended">
+						<div>
+							<BannerTitle>This challenge has ended.</BannerTitle>
+							<BannerBody>
+								Logging is closed. Browse the leaderboard for final standings.
+							</BannerBody>
+						</div>
+					</Banner>
+				)}
+				{isPreStart && (
+					<Banner $variant="pre">
+						<div>
+							<BannerTitle>Starts {challenge.config.startDate}</BannerTitle>
+							<BannerBody>Logging unlocks on start day.</BannerBody>
+						</div>
+					</Banner>
+				)}
+				{!isEnded && !isPreStart && activeDate === today && (
+					<Banner>
+						<EditBannerKey>Editable</EditBannerKey>
+						<EditBannerText>
+							until end of {yesterday} (yesterday cutoff).
+						</EditBannerText>
+					</Banner>
+				)}
+				{!isEnded && !isPreStart && activeDate === yesterday && (
+					<Banner $variant="warn">
+						<EditBannerKey>Closes soon</EditBannerKey>
+						<EditBannerText>
+							{editWindowHoursLeft !== null && editWindowHoursLeft > 0
+								? `Editable for ${editWindowHoursLeft} more hour${editWindowHoursLeft !== 1 ? "s" : ""}. Locks at midnight.`
+								: "Edit window for this day ends at midnight."}
+						</EditBannerText>
+					</Banner>
+				)}
+				{!isEnded &&
+					!isPreStart &&
+					isLocked &&
+					activeDate !== today &&
+					activeDate !== yesterday && (
+						<Banner $variant="locked">
+							<LockIcon />
+							<EditBannerKey>Locked</EditBannerKey>
+							<EditBannerText>
+								Edit window closed for {activeDate}.
+							</EditBannerText>
+						</Banner>
+					)}
 
-			<PersonCards>
-				<PersonLogCard
-					person={person}
-					logDate={logDate}
-					formRow={formRow}
-					entries={entries}
-					profiles={profiles}
-					validationError={validation}
-					showConfirm={confirmOpen}
-					onChange={setRow}
-					onClickSave={clickSave}
-					onConfirmSave={confirmSave}
-					onCancelConfirm={cancelConfirm}
-				/>
-			</PersonCards>
+				{/* Week summary */}
+				<WeekStrip>
+					<WeekHead>
+						<BodySm
+							style={{
+								fontFamily: "inherit",
+								fontSize: "inherit",
+								letterSpacing: "inherit",
+								textTransform: "inherit",
+							}}
+						>
+							<span
+								style={{
+									fontFamily: "var(--font-mono, monospace)",
+									fontSize: "10.5px",
+									letterSpacing: "0.10em",
+									textTransform: "uppercase",
+									color: "inherit",
+								}}
+							>
+								Week {weekNum}
+								{totalWeeks ? ` of ${totalWeeks}` : ""}
+							</span>
+						</BodySm>
+						<BodySm>{daysLeft !== null ? `${daysLeft} days left` : ""}</BodySm>
+					</WeekHead>
+					<WeekStats>
+						{weekStatRules.map((r) => {
+							const usage = weeklySummary.perRule[r.id];
+							return (
+								<WeekStat key={r.id}>
+									<WeekVal>
+										{usage?.used ?? 0}
+										{usage?.cap !== null ? (
+											<span className="dim">/{usage?.cap}</span>
+										) : (
+											""
+										)}
+									</WeekVal>
+									<WeekLbl>{r.name}</WeekLbl>
+								</WeekStat>
+							);
+						})}
+						{freeStatRule &&
+							(() => {
+								const fp = weeklySummary.freePassUsage[freeStatRule.id];
+								const freeTotal =
+									("freePasses" in freeStatRule
+										? freeStatRule.freePasses?.count
+										: undefined) ?? 0;
+								const freeLeft = freeTotal - (fp?.used ?? 0);
+								return (
+									<WeekStat key="free">
+										<WeekVal>
+											{freeLeft}
+											<span className="dim">/{freeTotal}</span>
+										</WeekVal>
+										<WeekLbl>Free left</WeekLbl>
+									</WeekStat>
+								);
+							})()}
+					</WeekStats>
+				</WeekStrip>
 
-			<GoalBlock>
-				<PersonalGoalPanel
-					person={person}
-					logDate={logDate}
-				/>
-			</GoalBlock>
+				{/* Rule cards */}
+				{rules.length === 0 ? (
+					<EmptyState>
+						<p>No rules configured yet.</p>
+						<p style={{ marginTop: 8, fontSize: 13 }}>
+							Ask the owner to add rules via Admin.
+						</p>
+					</EmptyState>
+				) : (
+					<RulesCol>
+						{rules.map((rule) => {
+							// Streak rules are rendered as bands below the rule they track
+							if (isStreakRule(rule)) return null;
+              const attachedStreaks = streaksByTarget.get(rule.id) ?? [];
+              return (
+                <RuleGroup key={rule.id} $hasStreak={attachedStreaks.length > 0}>
+									<RuleCardRouter
+										rule={rule}
+										member={member}
+										memberEntries={memberEntries}
+										evaluated={evaluated[rule.id] ?? null}
+										weeklySummary={weeklySummary}
+										locked={isLocked || isPreStart}
+										lockedAt={lockedAt}
+										weekAnchor={challenge.config.weekAnchor}
+										onSave={handleSave}
+										onSetTrackerGoal={handleSetTrackerGoal}
+									/>
+									{attachedStreaks.map((sr) => (
+										<StreakBand
+											key={sr.id}
+											rule={sr}
+											currentStreak={streakCounts[sr.id] ?? 0}
+										/>
+									))}
+								</RuleGroup>
+							);
+						})}
+						{/* Orphaned streaks: tracked rule was deleted — show standalone */}
+						{orphanedStreakRules.map((rule) => (
+							<RuleCardRouter
+								key={rule.id}
+								rule={rule}
+								member={member}
+								memberEntries={memberEntries}
+								evaluated={null}
+								weeklySummary={weeklySummary}
+								locked={isLocked || isPreStart}
+								lockedAt={lockedAt}
+								weekAnchor={challenge.config.weekAnchor}
+								onSave={handleSave}
+								onSetTrackerGoal={handleSetTrackerGoal}
+							/>
+						))}
+					</RulesCol>
+				)}
 
-			<HistoryBlock>
-				<SectionHeader style={{ marginBottom: "1rem" }}>
-					<div>
-						<SectionTitle style={{ fontSize: "clamp(1.15rem, 3vw, 1.5rem)" }}>
-							Your past logs
-						</SectionTitle>
-						<SectionSub>
-							Workouts and personal goal entries (newest first).
-						</SectionSub>
-					</div>
-				</SectionHeader>
-				<HistoryEntriesTable
-					rows={myHistoryRows}
-					showPlayerColumn={false}
-					emptyMessage="No past entries yet."
-					footerProfilePts={profilePtsTotal}
-					strikeNonLatestGoalPts
-					pageSize={LOG_HISTORY_PAGE_SIZE}
-				/>
-			</HistoryBlock>
-		</div>
+				<FootNote>
+					Tap a card to change. Edits appear on the leaderboard instantly.
+				</FootNote>
+			</ScreenBody>
+
+			{toast && (
+				<ToastWrap key={toastKey}>
+					<ToastEl>
+						<ToastDot />
+						<span>
+							<strong>{toast.msg}</strong>{" "}
+							<span style={{ opacity: 0.7 }}>· {toast.sub}</span>
+						</span>
+					</ToastEl>
+				</ToastWrap>
+			)}
+		</>
 	);
 }
