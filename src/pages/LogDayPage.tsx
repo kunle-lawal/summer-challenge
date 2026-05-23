@@ -14,7 +14,7 @@ import {
 	isWithinEditWindow,
 	diffDays,
 } from "@/lib/dates";
-import { ArrowIcon, LockIcon } from "@/components/ui/Icons";
+import { LockIcon } from "@/components/ui/Icons";
 import { RuleCardRouter } from "@/components/log/ruleCardRouter";
 import { CardWrap } from "@/components/log/RuleCard";
 import { StreakBand } from "@/components/log/StreakRuleCard";
@@ -74,10 +74,21 @@ const MemberRow = styled.div`
 	margin-top: 2px;
 `;
 
-const MemberName = styled.span`
+const MemberName = styled.button`
+	appearance: none;
+	border: 0;
+	background: none;
+	padding: 0;
+	font: inherit;
+	cursor: pointer;
 	font-weight: 600;
 	font-size: 15px;
 	color: ${({ theme }) => theme.color.ink};
+	text-align: left;
+
+	&:hover {
+		text-decoration: underline;
+	}
 `;
 
 const DotSep = styled.span`
@@ -120,28 +131,6 @@ const TotalLbl = styled.span`
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
 	opacity: 0.7;
-`;
-
-const IconBtn = styled.button`
-	width: 36px;
-	height: 36px;
-	border-radius: ${({ theme }) => theme.radii.md};
-	background: ${({ theme }) => theme.color.surface};
-	border: 1px solid ${({ theme }) => theme.color.hair};
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	color: ${({ theme }) => theme.color.ink};
-	flex-shrink: 0;
-	margin-top: 2px;
-	svg {
-		width: 18px;
-		height: 18px;
-		stroke: currentColor;
-		stroke-width: 1.6;
-		fill: none;
-	}
 `;
 
 const ScreenBody = styled.div`
@@ -338,7 +327,7 @@ const WeekLbl = styled.div`
 const RulesCol = styled.div`
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 12px;
 `;
 
 /** Wraps a rule card + any streak bands. When $hasStreak, the card's bottom corners are squared. */
@@ -696,17 +685,16 @@ export function LogDayPage() {
 	return (
 		<>
 			<LogHeader>
-				<IconBtn
-					onClick={() => navigate(`/c/${slug}`)}
-					aria-label="Back"
-					style={{ marginTop: 2 }}
-				>
-					<ArrowIcon />
-				</IconBtn>
 				<HeaderInfo>
 					<Eyebrow>Log day</Eyebrow>
 					<MemberRow>
-						<MemberName>{member.name}</MemberName>
+						<MemberName
+							type="button"
+							onClick={() => navigate(`/c/${slug}/pick`)}
+							title="Switch member"
+						>
+							{member.name}
+						</MemberName>
 						<DotSep />
 						<DateLabel>{getDateLabel(activeDate)}</DateLabel>
 					</MemberRow>

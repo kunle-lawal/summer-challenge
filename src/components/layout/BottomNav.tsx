@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import styled from 'styled-components';
-import { HomeIcon, LogIcon, BoardIcon, HistoryIcon } from '@/components/ui/Icons';
+import { LogIcon, BoardIcon, HistoryIcon } from '@/components/ui/Icons';
 
 const Nav = styled.nav`
   position: fixed;
@@ -11,7 +11,7 @@ const Nav = styled.nav`
   height: calc(64px + env(safe-area-inset-bottom, 0px));
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   background: linear-gradient(180deg, rgba(255,253,246,0) 0%, ${({ theme }) => theme.color.surface} 35%);
   z-index: 50;
@@ -63,10 +63,6 @@ export function BottomNav({ slug }: Props) {
   return (
     <Nav>
       <Item to={base} end>
-        <HomeIcon />
-        <span>Home</span>
-      </Item>
-      <Item to={`${base}/log`}>
         <LogIcon />
         <span>Log</span>
       </Item>
