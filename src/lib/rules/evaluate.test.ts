@@ -232,7 +232,8 @@ describe('range rule', () => {
     order: 0,
     min: 7,
     max: 9,
-    pointsInside: 2,
+    pointsAtMin: 1,
+    pointsAtMax: 3,
     pointsOutside: -1,
     unit: 'hrs',
     decimals: 1,
@@ -240,17 +241,17 @@ describe('range rule', () => {
   const challenge = makeChallenge([rule]);
   const member = makeMember();
 
-  it('awards pointsInside for value at lower bound', () => {
+  it('awards pointsAtMin at lower bound', () => {
     const entry = makeEntry('2024-06-01', { sleep: 7 });
-    expect(evaluateEntry(challenge, entry, member, [entry]).perRule['sleep']?.points).toBe(2);
+    expect(evaluateEntry(challenge, entry, member, [entry]).perRule['sleep']?.points).toBe(1);
   });
 
-  it('awards pointsInside for value at upper bound', () => {
+  it('awards pointsAtMax at upper bound', () => {
     const entry = makeEntry('2024-06-01', { sleep: 9 });
-    expect(evaluateEntry(challenge, entry, member, [entry]).perRule['sleep']?.points).toBe(2);
+    expect(evaluateEntry(challenge, entry, member, [entry]).perRule['sleep']?.points).toBe(3);
   });
 
-  it('awards pointsInside for value inside range', () => {
+  it('scales linearly inside range', () => {
     const entry = makeEntry('2024-06-01', { sleep: 8 });
     expect(evaluateEntry(challenge, entry, member, [entry]).perRule['sleep']?.points).toBe(2);
   });
@@ -263,6 +264,18 @@ describe('range rule', () => {
   it('awards pointsOutside for value above range', () => {
     const entry = makeEntry('2024-06-01', { sleep: 11 });
     expect(evaluateEntry(challenge, entry, member, [entry]).perRule['sleep']?.points).toBe(-1);
+  });
+
+  it('supports legacy pointsInside as flat in-band score', () => {
+    const legacyRule = {
+      ...rule,
+      pointsAtMin: undefined,
+      pointsAtMax: undefined,
+      pointsInside: 2,
+    } as typeof rule & { pointsInside: number };
+    const legacyChallenge = makeChallenge([legacyRule]);
+    const entry = makeEntry('2024-06-01', { sleep: 8 });
+    expect(evaluateEntry(legacyChallenge, entry, member, [entry]).perRule['sleep']?.points).toBe(2);
   });
 
   it('returns 0 when rule not logged', () => {

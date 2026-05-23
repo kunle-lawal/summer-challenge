@@ -62,9 +62,13 @@ The app is a **multi-player workout challenge tracker** backed by **Firestore** 
 
 #### Create challenge — [`CreateChallengePage.tsx`](../src/pages/CreateChallengePage.tsx)
 
-- **Route:** `/challenge/new`.
-- **Fields:** name, description, **admin password**, start/end dates, goal-reset window, full **ScoringConfig** (pre-filled from `DEFAULT_SCORING` in `firestoreApi.ts`).
-- **Submit:** `createChallenge(user, fields)` → redirect to `/challenge/:newId/log`.
+- **Route:** `/new` (see routing table).
+- **3-step wizard:** (1) name & dates + timezone, (2) rules, (3) owner password & members.
+- **Rule presets:** Classic (gym/steps/junk/weight), Minimal (single binary), or Custom (empty).
+- **Rule list:** Each row shows kind subtitle + scoring formula via [`ruleDocs.ts`](../src/lib/rules/ruleDocs.ts).
+- **Rule editor:** [`RuleEditor.tsx`](../src/components/admin/RuleEditor.tsx) — kind descriptions, per-kind hints, **Load example** button (one sample rule per kind from `exampleRuleForKind`).
+- **Range scoring:** In-band points scale linearly from `pointsAtMin` (at band low) to `pointsAtMax` (at band high); `pointsOutside` when out of band. Legacy stored rules with `pointsInside` still evaluate as flat in-band score.
+- **Submit:** `createChallenge({ name, password, config })` → redirect to `/c/:slug`.
 
 #### Join challenge — [`JoinChallengePage.tsx`](../src/pages/JoinChallengePage.tsx)
 
@@ -488,19 +492,27 @@ There is **no `hooks/` folder**: use **`useAuth`**, **`useChallenge`**, and **`u
 
 **Route tree (authenticated users)**
 
-| Path | Component | Notes |
-|------|-----------|-------|
-| `/challenges` | `MyChallengesPage` | Lists challenges the user participates in. |
-| `/challenge/new` | `CreateChallengePage` | Create a new challenge. |
-| `/join/:challengeId` | `JoinChallengePage` | Join via share link. |
-| `/challenge/:challengeId/*` | `ChallengeSetup` | Sets `activeChallengeId`; nested routes in `Layout`. |
-| `/challenge/:challengeId/log` | `LogDayPage` | Workout log + personal goal. |
-| `/challenge/:challengeId/board` | `LeaderboardPage` | Standings. |
-| `/challenge/:challengeId/history` | `HistoryPage` | Full history + admin clear. |
-| `/challenge/:challengeId/info` | `ChallengeInfoPage` | Challenge metadata / share. |
-| `/` and `*` | `Navigate` | → `/challenges`. |
+**v2 routes (current):**
 
-**`ChallengeSetup`** (in `App.tsx`): reads `challengeId` from `useParams`, `setActiveChallengeId` in `useEffect`, participant gate, nested `<Routes>` inside `Layout`. Cleanup: `setActiveChallengeId(null)` on unmount.
+| Path | Page | Notes |
+|------|------|-------|
+| `/` | `RootRedirect` | If recent challenge in localStorage → `/c/:slug`, else → `/new`. |
+| `/new` | `CreateChallengePage` | 3-step wizard. No auth gate. |
+| `/c/:slug` | `ChallengeHomePage` | Hero stats, podium, log CTA. Wrapped in `ChallengeProvider`. |
+| `/c/:slug/pick` | `PickMemberPage` | Full-screen, no chrome. Sets `selectedMemberId` in localStorage. |
+| `/c/:slug/log` | `LogDayPage` | Date strip + 6 rule card kinds. Guarded by `RequireMember`. |
+| `/c/:slug/board` | `LeaderboardPage` | Podium + sortable standings table. |
+| `/c/:slug/history` | `HistoryPage` | Grouped entry event log. |
+| `/c/:slug/m/:memberId` | `MemberProfilePage` | Per-member breakdown + recent entries. |
+| `/c/:slug/rules` | `RulesReferencePage` | Read-only rule reference for participants. |
+| `/c/:slug/admin` | `AdminPage` | Gate (password) → Home → Members / Config / Audit sub-views. Wrapped in `AdminModeProvider`. |
+| `*` | `Navigate` | → `/`. |
+
+**Provider chain for `/c/:slug/*`:** `ChallengeProvider` (slug resolution + 5 Firestore listeners) → `SelectedMemberProvider` → `Outlet`. Chrome routes go through a pathless `ChromeLayout` route (renders `Layout` with `TopBar` + `BottomNav`). `/c/:slug/pick` is outside `ChromeLayout` (no bottom nav, full-screen). Admin sub-route adds `AdminModeProvider` via `AdminLayout`.
+
+**Guards:** `RequireMember` checks `useSelectedMember()`; if null/orphaned → `/c/:slug/pick`. Admin password gate lives inside `AdminPage` itself (not a route guard) to show the lock UI.
+
+**Per-route error boundaries:** Each `<Route element>` is wrapped in `<RouteEB>` which renders `<ErrorBoundary>` to contain crashes to the affected route.
 
 ---
 
@@ -532,27 +544,23 @@ There is **no `hooks/` folder**: use **`useAuth`**, **`useChallenge`**, and **`u
 
 **File:** [`src/context/ChallengeContext.tsx`](../src/context/ChallengeContext.tsx)
 
-**`ChallengeContextValue`** (legacy cache + Firebase fields):
+**`ChallengeContextValue`:**
 
-| Field / method | Detail |
-|----------------|--------|
-| `entries`, `profiles`, `resetLog` | Legacy cache shape; `passwords` always `{}` from Firestore |
-| `challenge` | Firestore challenge doc (`name`, dates, `scoring`, `participants`, `adminPassword`, …) |
-| `activeChallengeId` / `setActiveChallengeId` | Set by `ChallengeSetup` from URL |
-| `loading` | Until all four subscriptions fire first snapshot |
-| `initError` | e.g. “Challenge not found.” |
-| `syncing` | Always `false` |
-| `clearGeneration` | Bumps on `clearAllLocal()` |
-| `refreshFromSheets()` | No-op (real-time subscriptions) |
-| `updateCache(fn)` | Optimistic local merge |
-| `clearAllLocal()` | Empty cache + bump generation |
-| `checkPassword(key, input)` | vs `challenge.adminPassword` (`key` ignored) |
-| `postToSheets(action, data)` | Adapter → `firestoreApi` writes |
+| Field | Detail |
+|-------|--------|
+| `challenge` | Firestore challenge doc or `null` while loading / not found. |
+| `loading` | `true` until slug resolved + first challenge-doc snapshot received. |
+| `error` | Firestore error string or `null`. |
+| `notFound` | `true` if slug doesn't resolve. |
+| `members` | All members (active + removed). Real-time. |
+| `entries` | All entries for this challenge. Real-time. |
+| `auditLog` | All audit log entries, newest-first (`orderBy timestamp desc`). Real-time. Non-fatal permission errors are `console.warn`ed only. |
+| `isEnded` | `challenge.status === 'ended'`. |
+| `activeMembers` | `members.filter(m => m.active)` sorted by name. |
 
-**Data flow:** see §Product features → Data & sync.
+**Firestore listeners (5):** challenge doc · members subcollection · entries subcollection · auditLog subcollection · slug index (one-time `getDoc`).
 
-**Hook guard:** `useChallenge()` throws outside provider.
-
+**Hook guard:** `useChallenge()` throws outside `<ChallengeProvider>`.
 ---
 
 ## 7. Firestore data model
@@ -576,16 +584,18 @@ Root doc: `name`, `description`, `createdBy`, `adminPassword`, `startDate`, `end
 
 **File:** [`src/components/layout/Layout.tsx`](../src/components/layout/Layout.tsx)
 
-- `NavBar`, `<main><Outlet /></main>`, `SheetSpinner` (never visible while `syncing` is always false).
-- No pathname-based refresh — Firestore pushes updates.
+- At **< 768 px**: `BottomNav` (fixed, 64 px) + `<main>` with 72 px bottom padding.
+- At **≥ 768 px**: `TopBar` (fixed left sidebar, 200 px wide) + `<main>` left-shifted; `BottomNav` hidden.
+- `main` renders `<Outlet />` for child routes.
 
 ### Layout chrome
 
 | Component | File | Role |
 |-----------|------|------|
-| `NavBar` | [`NavBar.tsx`](../src/components/layout/NavBar.tsx) | Challenge-scoped tabs, My challenges, Sign out |
-| `LoadingOverlay` | [`LoadingOverlay.tsx`](../src/components/layout/LoadingOverlay.tsx) | Full-screen init/auth/challenge load |
-| `SheetSpinner` | [`SheetSpinner.tsx`](../src/components/layout/SheetSpinner.tsx) | Legacy sync indicator (unused in Firebase mode) |
+| `TopBar` | [`TopBar.tsx`](../src/components/layout/TopBar.tsx) | Desktop sidebar nav (≥ 768 px): challenge name + Home / Log day / Leaderboard / History links |
+| `BottomNav` | [`BottomNav.tsx`](../src/components/layout/BottomNav.tsx) | Mobile tab bar (< 768 px): Home / Log / Board / History |
+| `ErrorBoundary` | [`ErrorBoundary.tsx`](../src/components/layout/ErrorBoundary.tsx) | Catches render errors; shows "Something went wrong" + Reload |
+| `LoadingState` | [`LoadingState.tsx`](../src/components/layout/LoadingState.tsx) | Full-screen loading message |
 
 ### `PersonLogCard` — grid layout
 
@@ -661,7 +671,8 @@ Early return `null` if `!person` (should not happen when authenticated).
 
 ### `CreateChallengePage` / `JoinChallengePage`
 
-- See §Product features → Identity & navigation.
+- See §Product features → Identity & navigation (Create challenge).
+- Shared rule editor: [`RuleEditor.tsx`](../src/components/admin/RuleEditor.tsx); copy/examples in [`ruleDocs.ts`](../src/lib/rules/ruleDocs.ts).
 
 ### `LeaderboardPage` — [`src/pages/LeaderboardPage.tsx`](../src/pages/LeaderboardPage.tsx)
 

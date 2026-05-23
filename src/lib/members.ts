@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { appendAuditLog, type ActorContext } from './audit';
-import type { Member } from '../types';
+import type { Member, MemberTrackerConfig } from '../types';
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -35,6 +35,10 @@ export type RenameMemberResult =
   | { ok: false; reason: 'not_found' };
 
 export type RemoveMemberResult =
+  | { ok: true }
+  | { ok: false; reason: 'not_found' };
+
+export type SetTrackerConfigResult =
   | { ok: true }
   | { ok: false; reason: 'not_found' };
 
@@ -218,4 +222,44 @@ function suggestName(name: string, existingMembers: Member[]): string {
     if (!findNameConflict(candidate, existingMembers)) return candidate;
     suffix++;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Tracker config
+// ---------------------------------------------------------------------------
+
+/**
+ * Set (or replace) a member's tracker goal configuration.
+ * Once set, the goal is shown as locked in the UI — the member cannot
+ * change it themselves; only an owner can update it via admin.
+ */
+export async function setTrackerConfig(
+  challengeId: string,
+  memberId: string,
+  config: Omit<MemberTrackerConfig, 'lockedAt'>,
+  actor: ActorContext,
+): Promise<SetTrackerConfigResult> {
+  const memberRef = doc(db, 'challenges', challengeId, 'members', memberId);
+  const snap = await getDoc(memberRef);
+  if (!snap.exists()) return { ok: false, reason: 'not_found' };
+
+  const before = (snap.data() as Member).trackerConfig ?? null;
+  const trackerConfig: MemberTrackerConfig = {
+    ...config,
+    lockedAt: serverTimestamp() as never,
+  };
+
+  const batch = writeBatch(db);
+  batch.update(memberRef, { trackerConfig });
+
+  appendAuditLog(batch, challengeId, {
+    actor,
+    action: 'member.rename', // closest available — future: 'member.tracker_config_set'
+    target: { kind: 'member', id: memberId },
+    before,
+    after: config,
+  });
+
+  await batch.commit();
+  return { ok: true };
 }

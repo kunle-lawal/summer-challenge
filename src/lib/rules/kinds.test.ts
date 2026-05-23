@@ -56,7 +56,7 @@ describe('validateEntryValue — counter', () => {
 // ---------------------------------------------------------------------------
 
 describe('validateEntryValue — range', () => {
-  const rule = { id: 'sleep', kind: 'range' as const, name: 'Sleep', order: 0, min: 7, max: 9, pointsInside: 2, pointsOutside: -1, unit: 'hrs', decimals: 1 };
+  const rule = { id: 'sleep', kind: 'range' as const, name: 'Sleep', order: 0, min: 7, max: 9, pointsAtMin: 2, pointsAtMax: 2, pointsOutside: -1, unit: 'hrs', decimals: 1 };
 
   it('accepts a value inside the range', () => expect(validateEntryValue(rule, 8)).toEqual({ valid: true }));
   it('accepts a value outside the range (range is not semantic validation)', () => expect(validateEntryValue(rule, 3)).toEqual({ valid: true }));

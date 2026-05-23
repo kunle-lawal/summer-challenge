@@ -123,8 +123,8 @@ export interface CounterRule extends BaseRule {
 
 /**
  * A numeric daily metric scored on whether it falls inside a window.
- * Example: sleep 7–9 hours, calories 1800–2200. Outside the window → penalty
- * or zero points, depending on `pointsOutside`.
+ * Example: sleep 7–9 hours — points scale from `pointsAtMin` at the low end
+ * to `pointsAtMax` at the high end. Outside the window → `pointsOutside`.
  *
  * Value type in entries: `number`
  */
@@ -134,9 +134,11 @@ export interface RangeRule extends BaseRule {
   min: number;
   /** Inclusive upper bound. */
   max: number;
-  /** Points awarded when value ∈ [min, max]. */
-  pointsInside: number;
-  /** Points awarded when value is outside the range. Can be negative. */
+  /** Points at the lower bound of the band (linear scale to pointsAtMax). */
+  pointsAtMin: number;
+  /** Points at the upper bound of the band. */
+  pointsAtMax: number;
+  /** Points when value is outside [min, max]. Can be negative. */
   pointsOutside: number;
   unit: string;
   decimals: number;

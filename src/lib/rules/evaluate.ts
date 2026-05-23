@@ -28,6 +28,7 @@ import type {
 import type { EvaluatedEntry, EvaluatedRule } from '../../types';
 import type { DateString } from '../../types';
 import { getWeekWindow } from '../dates';
+import { scoreRangeValue } from './ruleDocs';
 import {
   countFreePassesUsed,
   countPriorBinaryPositiveDatesInWeek,
@@ -209,10 +210,16 @@ function evalRange(rule: RangeRule, entry: Entry): EvaluatedRule {
   }
 
   const inside = rawValue >= rule.min && rawValue <= rule.max;
-  const pts = inside ? rule.pointsInside : rule.pointsOutside;
+  let pts: number;
+  if (inside) {
+    const scaled = scoreRangeValue(rule, rawValue);
+    pts = scaled ?? 0;
+  } else {
+    pts = rule.pointsOutside;
+  }
   const notes = inside
-    ? [`${rawValue} ${rule.unit} — in range [${rule.min}–${rule.max}]`]
-    : [`${rawValue} ${rule.unit} — outside range [${rule.min}–${rule.max}]`];
+    ? [`${rawValue} ${rule.unit} — in band [${rule.min}–${rule.max}]`]
+    : [`${rawValue} ${rule.unit} — outside band [${rule.min}–${rule.max}]`];
 
   return { ruleId: rule.id, rawValue, points: pts, notes };
 }

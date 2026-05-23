@@ -30,11 +30,13 @@ import {
   doc,
   getDoc,
   onSnapshot,
+  orderBy,
+  query,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { recordChallengeVisit } from '../lib/recentChallenges';
-import type { Challenge, Member, Entry, SlugIndexEntry } from '../types';
+import type { Challenge, Member, Entry, AuditLogEntry, SlugIndexEntry } from '../types';
 
 // ---------------------------------------------------------------------------
 // Context value shape
@@ -54,6 +56,8 @@ export interface ChallengeContextValue {
   members: Member[];
   /** All entries for this challenge. Updates in real-time. */
   entries: Entry[];
+  /** Audit log entries, newest first. Updates in real-time. */
+  auditLog: AuditLogEntry[];
 
   // --- Derived convenience values ---
 
@@ -97,6 +101,7 @@ export function ChallengeProvider({ slug, children }: Props) {
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -109,6 +114,7 @@ export function ChallengeProvider({ slug, children }: Props) {
     setChallenge(null);
     setMembers([]);
     setEntries([]);
+    setAuditLog([]);
     setLoading(true);
     setError(null);
     setNotFound(false);
@@ -195,6 +201,25 @@ export function ChallengeProvider({ slug, children }: Props) {
             },
           ),
         );
+
+        // Step 5: subscribe to auditLog subcollection, newest first.
+        unsubs.push(
+          onSnapshot(
+            query(
+              collection(db, 'challenges', challengeId, 'auditLog'),
+              orderBy('timestamp', 'desc'),
+            ),
+            snap => {
+              if (cancelled) return;
+              setAuditLog(snap.docs.map(d => ({ id: d.id, ...d.data() }) as AuditLogEntry));
+            },
+            err => {
+              if (cancelled) return;
+              // Audit log errors are non-fatal — don't block the rest of the app
+              console.warn('auditLog snapshot error:', err.message);
+            },
+          ),
+        );
       })
       .catch(err => {
         if (cancelled) return;
@@ -217,6 +242,7 @@ export function ChallengeProvider({ slug, children }: Props) {
     notFound,
     members,
     entries,
+    auditLog,
     isEnded,
     activeMembers,
   };

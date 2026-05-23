@@ -12,6 +12,7 @@
 import {
   doc,
   getDoc,
+  getDocs,
   collection,
   writeBatch,
   runTransaction,
@@ -48,6 +49,10 @@ export type UpdateConfigResult =
   | { ok: false; reason: 'not_found' };
 
 export type ChangeStatusResult =
+  | { ok: true }
+  | { ok: false; reason: 'not_found' };
+
+export type DeleteChallengeResult =
   | { ok: true }
   | { ok: false; reason: 'not_found' };
 
@@ -220,6 +225,48 @@ export async function changeChallengeStatus(
   });
 
   await batch.commit();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Delete (permanent)
+// ---------------------------------------------------------------------------
+
+const BATCH_SIZE = 400; // Firestore batch limit is 500; stay well under
+
+/**
+ * Permanently delete a challenge and ALL its subcollection data.
+ *
+ * Deletes in order: auditLog → entries → members → challenge doc → slugIndex.
+ * Uses batched deletes to stay under Firestore's 500-op batch limit.
+ *
+ * This is irreversible. The caller is responsible for confirming with the user.
+ */
+export async function deleteChallenge(
+  challengeId: string,
+  slug: string,
+): Promise<DeleteChallengeResult> {
+  const challengeRef = doc(db, 'challenges', challengeId);
+  const snap = await getDoc(challengeRef);
+  if (!snap.exists()) return { ok: false, reason: 'not_found' };
+
+  const subcollections = ['auditLog', 'entries', 'members'] as const;
+
+  for (const sub of subcollections) {
+    const colSnap = await getDocs(collection(db, 'challenges', challengeId, sub));
+    for (let i = 0; i < colSnap.docs.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      colSnap.docs.slice(i, i + BATCH_SIZE).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+
+  // Delete the challenge doc and its slugIndex entry atomically
+  const finalBatch = writeBatch(db);
+  finalBatch.delete(challengeRef);
+  finalBatch.delete(doc(db, 'slugIndex', slug));
+  await finalBatch.commit();
+
   return { ok: true };
 }
 
