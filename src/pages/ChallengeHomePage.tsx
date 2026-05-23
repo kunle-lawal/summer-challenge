@@ -450,7 +450,7 @@ export function ChallengeHomePage() {
           </YouCard>
         )}
 
-        <CtaLog onClick={() => navigate(`/c/${slug}/log`)} disabled={!canLog}>
+        <CtaLog onClick={() => navigate(`/c/${slug}`)} disabled={!canLog}>
           <CtaText>
             <CtaEyebrow>{today}</CtaEyebrow>
             <CtaTitle>{activeModeLabel}</CtaTitle>

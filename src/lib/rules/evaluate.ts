@@ -29,6 +29,7 @@ import type { EvaluatedEntry, EvaluatedRule } from '../../types';
 import type { DateString } from '../../types';
 import { getWeekWindow } from '../dates';
 import { scoreRangeValue } from './ruleDocs';
+import { computeTrackerProgress } from './trackerProgress';
 import {
   countFreePassesUsed,
   countPriorBinaryPositiveDatesInWeek,
@@ -310,12 +311,7 @@ function evalTracker(rule: TrackerRule, entry: Entry, member: Member): Evaluated
     return { ruleId: rule.id, rawValue, points: 0, notes: ['start and goal are equal'] };
   }
 
-  const progress =
-    config.direction === 'down'
-      ? config.startVal - rawValue    // decreasing: progress = reduction from start
-      : rawValue - config.startVal;  // increasing: progress = gain from start
-
-  const pct = Math.min(1, Math.max(0, progress / totalChange));
+  const { pct } = computeTrackerProgress(config, rawValue);
   const pts = pct * rule.maxPoints;
 
   const notes = [

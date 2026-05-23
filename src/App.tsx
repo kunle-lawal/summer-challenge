@@ -12,6 +12,7 @@ import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 
 import { RootRedirect } from "@/pages/RootRedirect";
 import { CreateChallengePage } from "@/pages/CreateChallengePage";
+import { ChallengeHomePage } from "@/pages/ChallengeHomePage";
 import { PickMemberPage } from "@/pages/PickMemberPage";
 import { LogDayPage } from "@/pages/LogDayPage";
 import { LeaderboardPage } from "@/pages/LeaderboardPage";
@@ -121,6 +122,7 @@ export function App() {
 
 				{/* Chrome routes (with BottomNav via Layout) */}
 				<Route element={<ChromeLayout />}>
+					<Route path="home" element={<RouteEB><ChallengeHomePage /></RouteEB>} />
 					<Route
 						index
 						element={

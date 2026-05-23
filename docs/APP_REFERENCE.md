@@ -498,7 +498,8 @@ There is **no `hooks/` folder**: use **`useAuth`**, **`useChallenge`**, and **`u
 |------|------|-------|
 | `/` | `RootRedirect` | If recent challenge in localStorage → `/c/:slug`, else → `/new`. |
 | `/new` | `CreateChallengePage` | 3-step wizard. No auth gate. |
-| `/c/:slug` | `LogDayPage` | Challenge front door — date strip + rule cards. Guarded by `RequireMember` (→ `/pick` if no member). |
+| `/c/:slug` | `LogDayPage` | Default landing — date strip + rule cards. Guarded by `RequireMember` (→ `/pick` if no member). |
+| `/c/:slug/home` | `ChallengeHomePage` | Dashboard — stats, podium peek, member picker prompt, log CTA. No member guard. |
 | `/c/:slug/pick` | `PickMemberPage` | Full-screen, no chrome. Sets `selectedMemberId` in localStorage. |
 | `/c/:slug/log` | redirect | → `/c/:slug` (legacy bookmark alias). |
 | `/c/:slug/board` | `LeaderboardPage` | Podium + sortable standings table. |

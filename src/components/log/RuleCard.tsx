@@ -321,6 +321,29 @@ export const StepVal = styled.div`
 	background: ${({ theme }) => theme.color.surface};
 `;
 
+export const StepValField = styled.input`
+	flex: 1;
+	min-width: 0;
+	width: 100%;
+	padding: 10px 4px;
+	text-align: center;
+	border: 0;
+	background: transparent;
+	font-family: ${({ theme }) => theme.font.display};
+	font-size: 22px;
+	line-height: 1;
+	color: ${({ theme }) => theme.color.ink};
+	font-variant-numeric: tabular-nums;
+	outline: none;
+	&:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	&::placeholder {
+		color: ${({ theme }) => theme.color.ink4};
+	}
+`;
+
 export const StepUnit = styled.span`
 	font-family: ${({ theme }) => theme.font.mono};
 	font-size: 11px;

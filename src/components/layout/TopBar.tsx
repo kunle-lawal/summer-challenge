@@ -4,7 +4,7 @@
  */
 import { NavLink } from 'react-router-dom';
 import styled from 'styled-components';
-import { LogIcon, BoardIcon, HistoryIcon } from '@/components/ui/Icons';
+import { HomeIcon, LogIcon, BoardIcon, HistoryIcon } from '@/components/ui/Icons';
 
 const Sidebar = styled.nav`
   display: none;
@@ -83,6 +83,10 @@ export function TopBar({ slug, challengeName }: Props) {
   return (
     <Sidebar>
       <Brand title={challengeName}>{challengeName}</Brand>
+      <Item to={`${base}/home`}>
+        <HomeIcon />
+        Home
+      </Item>
       <Item to={base} end>
         <LogIcon />
         Log day
