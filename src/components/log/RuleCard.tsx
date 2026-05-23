@@ -10,11 +10,12 @@ import { formatRuleFormula } from "@/lib/rules/ruleDocs";
 export const CardWrap = styled.div<{ $locked: boolean }>`
 	background: ${({ theme, $locked }) =>
 		$locked ? theme.color.bg : theme.color.surface};
-	border: 1px solid
-		${({ theme, $locked }) => ($locked ? theme.color.hair2 : theme.color.hair)};
+	border: 2px solid
+		${({ theme, $locked }) => ($locked ? theme.color.hair2 : theme.color.ink4)};
 	border-style: ${({ $locked }) => ($locked ? "dashed" : "solid")};
 	border-radius: ${({ theme }) => theme.radii.md};
 	padding: 14px;
+	box-shadow: 0 1px 0 rgba(24, 23, 15, 0.04);
 `;
 
 export const CardTop = styled.div`
