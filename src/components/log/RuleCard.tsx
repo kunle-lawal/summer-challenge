@@ -166,6 +166,8 @@ interface RuleShellProps {
 	points: number | null;
 	locked: boolean;
 	lockedAt?: string;
+	/** Overrides the default formula line under the rule name. */
+	metaLine?: string;
 	children: ReactNode;
 	footer?: ReactNode;
 }
@@ -175,6 +177,7 @@ export function RuleShell({
 	points,
 	locked,
 	lockedAt,
+	metaLine,
 	children,
 	footer,
 }: RuleShellProps) {
@@ -197,7 +200,7 @@ export function RuleShell({
 					<RuleMeta>
 						<KindLabel>{rule.kind}</KindLabel>
 						<DotSep />
-						<Formula>{ruleFormula(rule)}</Formula>
+						<Formula>{metaLine ?? ruleFormula(rule)}</Formula>
 					</RuleMeta>
 				</div>
 				<PtsDisplay>

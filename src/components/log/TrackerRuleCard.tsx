@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { TrackerRule, Member, TrackerDirection } from '@/types';
+import { resolveTrackerConfig } from '@/types/member';
 import type { EvaluatedRule } from '@/types';
 import styled from 'styled-components';
 import {
@@ -8,6 +9,7 @@ import {
 } from './RuleCard';
 import { NumericStepper } from './NumericStepper';
 import { computeTrackerProgress } from '@/lib/rules/trackerProgress';
+import { formatTrackerMemberMeta } from '@/lib/rules/ruleDocs';
 
 const TRACKER_THUMB = '#2563eb';
 
@@ -62,7 +64,7 @@ const EdgeLabel = styled.span<{ $side: 'left' | 'right' }>`
   position: absolute;
   top: 0;
   ${({ $side }) => ($side === 'left' ? 'left: 0;' : 'right: 0;')}
-  font-family: ${({ theme }) => theme.font.mono};
+  font-family: ${({ theme }) => theme.font.body};
   font-size: 11px;
   color: ${({ theme }) => theme.color.ink3};
   letter-spacing: 0.02em;
@@ -83,13 +85,18 @@ const CurrentLabel = styled.span<{ $left: number; $regressed?: boolean }>`
   transition: left 0.25s ease, color 0.15s ease;
 `;
 
-// ── Setup form styles ──────────────────────────────────────────────────────────
-
 const SetupForm = styled.div`
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 2px 0 4px;
+`;
+
+const SetupIntro = styled.p`
+  font-size: 13px;
+  color: ${({ theme }) => theme.color.ink2};
+  line-height: 1.45;
+  margin: 0;
 `;
 
 const SetupRow = styled.div`
@@ -99,7 +106,7 @@ const SetupRow = styled.div`
 `;
 
 const SetupLabel = styled.label`
-  font-family: ${({ theme }) => theme.font.mono};
+  font-family: ${({ theme }) => theme.font.body};
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -152,6 +159,15 @@ const ErrTxt = styled.p`
   color: ${({ theme }) => theme.color.bad};
 `;
 
+export interface TrackerGoalInput {
+  ruleId: string;
+  label: string;
+  unit: string;
+  startVal: number;
+  goalVal: number;
+  direction: TrackerDirection;
+}
+
 interface Props {
   rule: TrackerRule;
   member: Member;
@@ -159,18 +175,24 @@ interface Props {
   locked: boolean;
   lockedAt?: string;
   onChange: (value: number) => void;
-  onSetGoal?: (config: { ruleId: string; startVal: number; goalVal: number; direction: TrackerDirection }) => Promise<void>;
+  onSetGoal?: (config: TrackerGoalInput) => Promise<void>;
 }
 
 function fmtVal(n: number, decimals: number): string {
-  return n.toFixed(decimals);
+  return decimals === 0 ? String(Math.round(n)) : n.toFixed(decimals);
 }
 
 export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onChange, onSetGoal }: Props) {
-  const config = member.trackerConfig;
+  const rawConfig = member.trackerConfig?.ruleId === rule.id ? member.trackerConfig : null;
+  const config = rawConfig
+    ? resolveTrackerConfig(rawConfig, rule.unit, rule.name)
+    : null;
+
   const value = evaluated?.rawValue as number | null ?? null;
   const points = evaluated?.points ?? null;
 
+  const [labelInput, setLabelInput] = useState('');
+  const [unitInput, setUnitInput] = useState(rule.unit);
   const [startInput, setStartInput] = useState('');
   const [goalInput, setGoalInput] = useState('');
   const [direction, setDirection] = useState<TrackerDirection>('down');
@@ -181,6 +203,7 @@ export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onC
   const startVal = config?.startVal ?? 0;
   const goalVal = config?.goalVal ?? 0;
   const configDir = config?.direction ?? 'down';
+  const memberUnit = config?.unit ?? rule.unit;
   const [displayValue, setDisplayValue] = useState<number | null>(serverValue);
 
   const trackerProgress = config && displayValue !== null
@@ -198,14 +221,28 @@ export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onC
   if (!config) {
     const startNum = parseFloat(startInput);
     const goalNum = parseFloat(goalInput);
-    const canSave = !isNaN(startNum) && !isNaN(goalNum) && startNum !== goalNum && onSetGoal;
+    const labelTrim = labelInput.trim();
+    const unitTrim = unitInput.trim() || rule.unit;
+    const canSave =
+      labelTrim.length > 0 &&
+      !isNaN(startNum) &&
+      !isNaN(goalNum) &&
+      startNum !== goalNum &&
+      !!onSetGoal;
 
     const handleSetGoal = async () => {
       if (!canSave) return;
       setSetupError(null);
       setSaving(true);
       try {
-        await onSetGoal!({ ruleId: rule.id, startVal: startNum, goalVal: goalNum, direction });
+        await onSetGoal!({
+          ruleId: rule.id,
+          label: labelTrim,
+          unit: unitTrim,
+          startVal: startNum,
+          goalVal: goalNum,
+          direction,
+        });
       } catch {
         setSetupError('Could not save goal. Please try again.');
       } finally {
@@ -214,63 +251,96 @@ export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onC
     };
 
     return (
-      <RuleShell rule={rule} points={0} locked={false} footer={
-        <FootRow>
-          <BodySm>Set once — your goal locks in and can't be changed later.</BodySm>
-        </FootRow>
-      }>
+      <RuleShell
+        rule={rule}
+        points={0}
+        locked={false}
+        footer={
+          <FootRow>
+            <BodySm>Locks in once saved — ask the owner if you need to change it later.</BodySm>
+          </FootRow>
+        }
+      >
         <SetupForm>
+          <SetupIntro>
+            What do you want to track? Pick a direction and set your starting and goal values.
+          </SetupIntro>
+          <FieldBlock>
+            <SetupLabel htmlFor={`tracker-label-${rule.id}`}>What are you tracking?</SetupLabel>
+            <SetupInput
+              id={`tracker-label-${rule.id}`}
+              type="text"
+              placeholder="e.g. Weight loss, Squat PR, Waist"
+              value={labelInput}
+              onChange={e => setLabelInput(e.target.value)}
+            />
+          </FieldBlock>
           <SetupRow>
-            <div>
-              <SetupLabel>Starting {rule.unit}</SetupLabel>
+            <FieldBlock>
+              <SetupLabel htmlFor={`tracker-unit-${rule.id}`}>Unit</SetupLabel>
               <SetupInput
+                id={`tracker-unit-${rule.id}`}
+                type="text"
+                placeholder={rule.unit}
+                value={unitInput}
+                onChange={e => setUnitInput(e.target.value)}
+              />
+            </FieldBlock>
+            <FieldBlock>
+              <SetupLabel htmlFor={`tracker-start-${rule.id}`}>Starting value</SetupLabel>
+              <SetupInput
+                id={`tracker-start-${rule.id}`}
                 type="number"
                 step={step}
-                placeholder="e.g. 185"
+                placeholder="e.g. 190"
                 value={startInput}
                 onChange={e => setStartInput(e.target.value)}
               />
-            </div>
-            <div>
-              <SetupLabel>Goal {rule.unit}</SetupLabel>
+            </FieldBlock>
+            <FieldBlock>
+              <SetupLabel htmlFor={`tracker-goal-${rule.id}`}>Goal value</SetupLabel>
               <SetupInput
+                id={`tracker-goal-${rule.id}`}
                 type="number"
                 step={step}
                 placeholder="e.g. 170"
                 value={goalInput}
                 onChange={e => setGoalInput(e.target.value)}
               />
-            </div>
+            </FieldBlock>
           </SetupRow>
-          <div>
+          <FieldBlock>
             <SetupLabel>Direction</SetupLabel>
             <SetupRow>
-              <DirBtn $active={direction === 'down'} onClick={() => setDirection('down')}>
+              <DirBtn type="button" $active={direction === 'down'} onClick={() => setDirection('down')}>
                 ↓ Decreasing
-                <span style={{ display: 'block', fontSize: 10, opacity: 0.65, marginTop: 2 }}>weight, time</span>
+                <span style={{ display: 'block', fontSize: 10, opacity: 0.65, marginTop: 2 }}>loss, time, measurements</span>
               </DirBtn>
-              <DirBtn $active={direction === 'up'} onClick={() => setDirection('up')}>
+              <DirBtn type="button" $active={direction === 'up'} onClick={() => setDirection('up')}>
                 ↑ Increasing
-                <span style={{ display: 'block', fontSize: 10, opacity: 0.65, marginTop: 2 }}>reps, distance</span>
+                <span style={{ display: 'block', fontSize: 10, opacity: 0.65, marginTop: 2 }}>strength, mass, reps</span>
               </DirBtn>
             </SetupRow>
-          </div>
+          </FieldBlock>
           {setupError && <ErrTxt>{setupError}</ErrTxt>}
           {onSetGoal ? (
-            <SetupBtn onClick={handleSetGoal} disabled={!canSave || saving}>
-              {saving ? 'Saving…' : 'Set goal'}
+            <SetupBtn type="button" onClick={handleSetGoal} disabled={!canSave || saving}>
+              {saving ? 'Saving…' : 'Set my goal'}
             </SetupBtn>
           ) : (
-            <BodySm>Log in as a member to set your goal.</BodySm>
+            <BodySm>Pick a member to set your goal.</BodySm>
           )}
         </SetupForm>
       </RuleShell>
     );
   }
 
+  const metaLine = formatTrackerMemberMeta(config, rule);
+
   return (
     <RuleShell
       rule={rule}
+      metaLine={metaLine}
       points={points}
       locked={locked}
       lockedAt={lockedAt}
@@ -278,7 +348,7 @@ export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onC
         <FootRow>
           <BodySm>
             {remaining !== null
-              ? `${remaining.toFixed(rule.decimals)} ${rule.unit} ${configDir === 'down' ? 'to lose' : 'to gain'}`
+              ? `${remaining.toFixed(rule.decimals)} ${memberUnit} ${configDir === 'down' ? 'to lose' : 'to gain'}`
               : ''}
             {regressed
               ? configDir === 'down'
@@ -296,7 +366,7 @@ export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onC
           onChange={onChange}
           onLocalChange={setDisplayValue}
           decimals={rule.decimals}
-          unit={rule.unit}
+          unit={memberUnit}
           locked={locked}
           stepBase={startVal}
         />
@@ -318,3 +388,5 @@ export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onC
     </RuleShell>
   );
 }
+
+const FieldBlock = styled.div``;

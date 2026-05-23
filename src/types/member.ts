@@ -26,6 +26,10 @@ export type TrackerDirection = (typeof TRACKER_DIRECTIONS)[number];
 export interface MemberTrackerConfig {
   /** ID of the tracker rule this config applies to. Sanity check on read. */
   ruleId: string;
+  /** Member-defined label, e.g. "Weight loss", "Squat 1RM", "Waist". */
+  label?: string;
+  /** Display unit for this member's metric (falls back to rule default). */
+  unit?: string;
   /** Starting baseline value (e.g. starting weight). */
   startVal: number;
   /** Target value (e.g. goal weight). */
@@ -41,6 +45,19 @@ export interface MemberTrackerConfig {
    * by the member. Owner can still change it via admin (audit-logged).
    */
   lockedAt: Timestamp;
+}
+
+/** Resolve label/unit on configs saved before those fields existed. */
+export function resolveTrackerConfig(
+  config: MemberTrackerConfig,
+  ruleDefaultUnit: string,
+  ruleName: string,
+): Required<Pick<MemberTrackerConfig, 'label' | 'unit'>> & MemberTrackerConfig {
+  return {
+    ...config,
+    label: config.label?.trim() || ruleName,
+    unit: config.unit?.trim() || ruleDefaultUnit,
+  };
 }
 
 // ---------------------------------------------------------------------------

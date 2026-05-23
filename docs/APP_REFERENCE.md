@@ -67,6 +67,7 @@ The app is a **multi-player workout challenge tracker** backed by **Firestore** 
 - **Rule presets:** Classic (gym/steps/junk/weight), Minimal (single binary), or Custom (empty).
 - **Rule list:** Each row shows kind subtitle + scoring formula via [`ruleDocs.ts`](../src/lib/rules/ruleDocs.ts).
 - **Rule editor:** [`RuleEditor.tsx`](../src/components/admin/RuleEditor.tsx) — kind descriptions, per-kind hints, **Load example** button (one sample rule per kind from `exampleRuleForKind`).
+- **Tracker rules (`kind: 'tracker'`):** Owner sets max points + default unit only. Each member defines their own goal on first log (`label`, `unit`, `startVal`, `goalVal`, `direction`) stored on `members/{id}.trackerConfig`. Scoring uses `computeTrackerProgress` (% toward personal goal × rule `maxPoints`). Log card shows member meta via `formatTrackerMemberMeta`.
 - **Range scoring:** In-band points scale linearly from `pointsAtMin` (at band low) to `pointsAtMax` (at band high); `pointsOutside` when out of band. Legacy stored rules with `pointsInside` still evaluate as flat in-band score.
 - **Submit:** `createChallenge({ name, password, config })` → redirect to `/c/:slug`.
 
@@ -534,7 +535,7 @@ There is **no `hooks/` folder**: use **`useAuth`**, **`useChallenge`**, and **`u
 
 | File | Purpose |
 |------|---------|
-| [`theme.ts`](../src/theme/theme.ts) | **`AppTheme`**: `color.*` (incl. podium2/3), `font.display` / `font.body` (Unbounded, DM Sans), `radii.*`. |
+| [`theme.ts`](../src/theme/theme.ts) | **`AppTheme`**: `color.*` (incl. podium2/3), `font.display` / `font.body` / `font.mono` (all **Geist**), `radii.*`. |
 | [`styled.d.ts`](../src/theme/styled.d.ts) | `DefaultTheme` extends `AppTheme`. |
 | [`AppThemeProvider.tsx`](../src/theme/AppThemeProvider.tsx) | `ThemeProvider theme={appTheme}`. |
 | [`GlobalStyle.tsx`](../src/theme/GlobalStyle.tsx) | Reset + `body` from theme. |

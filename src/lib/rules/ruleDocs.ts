@@ -3,7 +3,9 @@
  * Used by RuleEditor, CreateChallengePage, AdminPage, and log cards.
  */
 
-import type { Rule, RuleKind, RangeRule } from '../../types';
+import type { Rule, RuleKind, RangeRule, TrackerRule } from '../../types';
+import { resolveTrackerConfig } from '../../types/member';
+import type { MemberTrackerConfig } from '../../types';
 
 // ---------------------------------------------------------------------------
 // Kind descriptions (setup / editor)
@@ -53,7 +55,7 @@ export const RULE_KIND_INFO: Record<RuleKind, RuleKindInfo> = {
     label: 'Tracker',
     subtitle: 'Personal goal',
     description:
-      'Each member sets their own start value and goal (e.g. weight). Points scale from 0 to a max based on progress toward that goal.',
+      'Adds a personal goal slot to the challenge. You set how many points progress is worth and a default unit. Each member chooses what they track (weight loss, squat PR, measurements, etc.) and sets their own start and goal on first log.',
   },
 };
 
@@ -137,8 +139,8 @@ export function exampleRuleForKind(
       return {
         id,
         kind,
-        name: 'Weight',
-        emoji: '⚖️',
+        name: 'Personal Goal',
+        emoji: '🎯',
         order,
         maxPoints: 30,
         unit: 'lb',
@@ -214,6 +216,17 @@ export function formatRuleFormula(r: Rule): string {
     case 'streak':
       return `${r.daysRequired} days = ${fmtPts(r.bonusPoints)} pts`;
     case 'tracker':
-      return `goal progress = up to ${fmtPts(r.maxPoints)} pts`;
+      return `personal goal · up to ${fmtPts(r.maxPoints)} pts`;
   }
+}
+
+/** Member-facing subtitle for a configured tracker goal. */
+export function formatTrackerMemberMeta(
+  config: MemberTrackerConfig,
+  rule: TrackerRule,
+): string {
+  const resolved = resolveTrackerConfig(config, rule.unit, rule.name);
+  const fmt = (n: number) =>
+    rule.decimals === 0 ? String(Math.round(n)) : n.toFixed(rule.decimals);
+  return `${resolved.label} · ${fmt(resolved.startVal)}→${fmt(resolved.goalVal)} ${resolved.unit}`;
 }

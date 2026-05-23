@@ -381,6 +381,8 @@ describe('tracker rule', () => {
   const memberWithGoal = makeMember({
     trackerConfig: {
       ruleId: 'weight',
+      label: 'Weight loss',
+      unit: 'lb',
       startVal: 200,
       goalVal: 180,
       direction: 'down',
@@ -428,6 +430,8 @@ describe('tracker rule', () => {
     const memberUp = makeMember({
       trackerConfig: {
         ruleId: 'weight',
+        label: 'Rep count',
+        unit: 'reps',
         startVal: 0,
         goalVal: 100,
         direction: 'up',

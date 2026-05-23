@@ -20,7 +20,7 @@ import type { Rule } from '../../types';
  *  1. Gym (binary, 4-day weekly cap, 5 lifetime free passes)
  *  2. Steps (counter, 10 000 steps = 5 pts)
  *  3. Junk (penalty, first infraction each week waived, 5 lifetime free passes)
- *  4. Weight (tracker, up to 30 pts toward personal goal)
+ *  4. Personal Goal (tracker, up to 30 pts — members set their own target)
  *
  * @param ids Stable IDs for [gym, steps, junk, weight] — generate with nanoid.
  */
@@ -65,8 +65,8 @@ export function classicPreset(ids: [string, string, string, string]): Rule[] {
     {
       id: weightId,
       kind: 'tracker',
-      name: 'Weight',
-      emoji: '⚖️',
+      name: 'Personal Goal',
+      emoji: '🎯',
       order: 3,
       maxPoints: 30,
       unit: 'lb',

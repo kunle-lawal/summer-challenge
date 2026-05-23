@@ -895,10 +895,15 @@ export function RuleEditor({
 
 					{draft.kind === "tracker" && (
 						<>
-							<SectionLbl>Metric</SectionLbl>
+							<SectionLbl>Scoring</SectionLbl>
+							<Hint>
+								Members pick their own goal the first time they log — weight
+								loss, strength PR, body measurements, etc. You define how many
+								points reaching that goal is worth.
+							</Hint>
 							<Row>
 								<Field>
-									<Label>Unit</Label>
+									<Label>Default unit</Label>
 									<Input
 										value={draft.unit}
 										onChange={(e) => set("unit", e.target.value)}
@@ -925,10 +930,6 @@ export function RuleEditor({
 									/>
 								</Field>
 							</Row>
-							<Hint>
-								Each member sets their own start value and goal. Points scale
-								from 0 to max based on progress toward goal.
-							</Hint>
 						</>
 					)}
 

@@ -3,7 +3,6 @@ import type {
 	Member,
 	Entry,
 	DateString,
-	TrackerDirection,
 } from "@/types";
 import type { EvaluatedRule } from "@/types";
 import type { WeeklySummary } from "@/types";
@@ -25,6 +24,8 @@ import { PenaltyRuleCard } from "./PenaltyRuleCard";
 import { StreakRuleCard } from "./StreakRuleCard";
 import { TrackerRuleCard } from "./TrackerRuleCard";
 
+import type { TrackerGoalInput } from "./TrackerRuleCard";
+
 interface Props {
 	rule: Rule;
 	member: Member;
@@ -36,12 +37,7 @@ interface Props {
 	/** weekAnchor from challenge.config.weekAnchor — drives penalty week window */
 	weekAnchor?: DateString;
 	onSave: (ruleId: string, value: RawEntryValue) => void;
-	onSetTrackerGoal?: (config: {
-		ruleId: string;
-		startVal: number;
-		goalVal: number;
-		direction: TrackerDirection;
-	}) => Promise<void>;
+	onSetTrackerGoal?: (config: TrackerGoalInput) => Promise<void>;
 }
 
 export function RuleCardRouter({

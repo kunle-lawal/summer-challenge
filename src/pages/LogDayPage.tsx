@@ -18,13 +18,8 @@ import { LockIcon } from "@/components/ui/Icons";
 import { RuleCardRouter } from "@/components/log/ruleCardRouter";
 import { CardWrap } from "@/components/log/RuleCard";
 import { StreakBand } from "@/components/log/StreakRuleCard";
-import type {
-	Entry,
-	DateString,
-	RawEntryValue,
-	TrackerDirection,
-	StreakRule,
-} from "@/types";
+import type { Entry, DateString, RawEntryValue, StreakRule } from "@/types";
+import type { TrackerGoalInput } from "@/components/log/TrackerRuleCard";
 import { isStreakRule } from "@/types";
 
 // ── Animations ────────────────────────────────────────────────────────────────
@@ -557,12 +552,7 @@ export function LogDayPage() {
 	);
 
 	const handleSetTrackerGoal = useCallback(
-		async (cfg: {
-			ruleId: string;
-			startVal: number;
-			goalVal: number;
-			direction: TrackerDirection;
-		}) => {
+		async (cfg: TrackerGoalInput) => {
 			await setTrackerConfig(challenge.id, selectedMemberId, cfg, {
 				memberId: selectedMemberId,
 				isOwner: false,
