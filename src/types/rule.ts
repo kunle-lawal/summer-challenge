@@ -203,13 +203,10 @@ export interface StreakRule extends BaseRule {
 // ---------------------------------------------------------------------------
 
 /**
- * A continuous metric tracked toward a per-member goal — the v2
- * generalization of v1's personal goal. Examples: weight loss, mile time,
- * max pushups.
- *
- * The rule defines only the SHAPE of the metric (max points, unit). Each
- * member sets their own start/goal/direction in `member.trackerConfig`
- * (see member.ts).
+ * A personal-goal tracker. The owner defines that the challenge includes
+ * goal tracking (max points, default unit). Each member sets their own
+ * label, start, goal, direction, and unit on first log — see
+ * `member.trackerConfig`.
  *
  * v1 cap: one tracker per challenge. See V2_PLAN.md §3.4.
  *
@@ -217,11 +214,10 @@ export interface StreakRule extends BaseRule {
  */
 export interface TrackerRule extends BaseRule {
   kind: 'tracker';
-  /** Max points the tracker contributes to total score. v1 used 30. */
+  /** Max points when a member reaches their personal goal. */
   maxPoints: number;
-  /** Display unit, e.g. "lb", "kg", "sec", "%". */
+  /** Default unit suggested at member setup (members may choose their own). */
   unit: string;
-  /** Decimal places for display. */
   decimals: number;
 }
 

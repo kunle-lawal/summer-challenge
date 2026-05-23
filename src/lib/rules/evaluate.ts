@@ -29,6 +29,8 @@ import type { EvaluatedEntry, EvaluatedRule } from '../../types';
 import type { DateString } from '../../types';
 import { getWeekWindow } from '../dates';
 import { scoreRangeValue } from './ruleDocs';
+import { computeTrackerProgress } from './trackerProgress';
+import { resolveTrackerConfig } from '../../types/member';
 import {
   countFreePassesUsed,
   countPriorBinaryPositiveDatesInWeek,
@@ -310,16 +312,15 @@ function evalTracker(rule: TrackerRule, entry: Entry, member: Member): Evaluated
     return { ruleId: rule.id, rawValue, points: 0, notes: ['start and goal are equal'] };
   }
 
-  const progress =
-    config.direction === 'down'
-      ? config.startVal - rawValue    // decreasing: progress = reduction from start
-      : rawValue - config.startVal;  // increasing: progress = gain from start
-
-  const pct = Math.min(1, Math.max(0, progress / totalChange));
+  const { pct } = computeTrackerProgress(config, rawValue);
   const pts = pct * rule.maxPoints;
+  const resolved = resolveTrackerConfig(config, rule.unit, rule.name);
+  const unitLabel = resolved.unit;
+  const valueLabel =
+    rule.decimals === 0 ? String(Math.round(rawValue)) : rawValue.toFixed(rule.decimals);
 
   const notes = [
-    `${Math.round(pct * 100)}% of goal (${rawValue} ${rule.unit})`,
+    `${Math.round(pct * 100)}% of ${resolved.label} (${valueLabel} ${unitLabel})`,
   ];
 
   return { ruleId: rule.id, rawValue, points: pts, notes };

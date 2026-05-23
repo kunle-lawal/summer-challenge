@@ -62,11 +62,11 @@ export function BottomNav({ slug }: Props) {
   const base = `/c/${slug}`;
   return (
     <Nav>
-      <Item to={base} end>
+      <Item to={`${base}/home`}>
         <HomeIcon />
         <span>Home</span>
       </Item>
-      <Item to={`${base}/log`}>
+      <Item to={base} end>
         <LogIcon />
         <span>Log</span>
       </Item>

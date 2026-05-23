@@ -119,6 +119,8 @@ describe('aggregateMember — tracker latest-only', () => {
       ...makeMember('m1', 'Alice'),
       trackerConfig: {
         ruleId: 'weight',
+        label: 'Weight loss',
+        unit: 'lb',
         startVal: 200,
         goalVal: 180,
         direction: 'down',

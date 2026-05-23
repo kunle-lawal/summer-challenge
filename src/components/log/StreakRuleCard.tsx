@@ -43,13 +43,14 @@ interface Props {
 // ── StreakBand — compact inline variant attached below a tracked rule card ────
 
 const Band = styled.div`
-	margin-top: -1px;
-	border: 1px solid ${({ theme }) => theme.color.hair};
+	margin-top: -2px;
+	border: 2px solid ${({ theme }) => theme.color.ink4};
 	border-top: 2px dashed ${({ theme }) => theme.color.hair2};
 	border-radius: 0 0 ${({ theme }) => theme.radii.md}
 		${({ theme }) => theme.radii.md};
 	background: ${({ theme }) => theme.color.surface};
 	padding: 9px 14px 11px;
+	box-shadow: 0 1px 0 rgba(24, 23, 15, 0.04);
 `;
 
 const BandHead = styled.div`

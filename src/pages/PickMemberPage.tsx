@@ -142,7 +142,7 @@ export function PickMemberPage() {
 
   const handlePick = (memberId: string) => {
     setSelectedMemberId(memberId);
-    navigate(`/c/${slug}/log`);
+    navigate(`/c/${slug}`);
   };
 
   const handleClose = () => {

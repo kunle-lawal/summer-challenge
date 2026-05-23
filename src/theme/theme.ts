@@ -37,6 +37,9 @@ export interface AppTheme {
   };
 }
 
+const fontFamily =
+  '"Geist", -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif';
+
 export const appTheme: AppTheme = {
   color: {
     bg: '#f6f3ec',
@@ -59,9 +62,9 @@ export const appTheme: AppTheme = {
     gold: '#b48a2a',
   },
   font: {
-    display: '"Instrument Serif", "Georgia", serif',
-    body: '"Geist", -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif',
-    mono: '"JetBrains Mono", ui-monospace, "SFMono-Regular", monospace',
+    display: fontFamily,
+    body: fontFamily,
+    mono: fontFamily,
   },
   radii: {
     sm: '4px',

@@ -122,9 +122,9 @@ export function App() {
 
 				{/* Chrome routes (with BottomNav via Layout) */}
 				<Route element={<ChromeLayout />}>
-					<Route index element={<RouteEB><ChallengeHomePage /></RouteEB>} />
+					<Route path="home" element={<RouteEB><ChallengeHomePage /></RouteEB>} />
 					<Route
-						path="log"
+						index
 						element={
 							<RouteEB>
 								<RequireMember>
@@ -133,6 +133,7 @@ export function App() {
 							</RouteEB>
 						}
 					/>
+					<Route path="log" element={<Navigate to=".." replace relative="path" />} />
 					<Route path="board" element={<RouteEB><LeaderboardPage /></RouteEB>} />
 					<Route path="history" element={<RouteEB><HistoryPage /></RouteEB>} />
 					<Route path="m/:memberId" element={<RouteEB><MemberProfilePage /></RouteEB>} />

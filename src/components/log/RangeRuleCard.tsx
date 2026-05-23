@@ -1,12 +1,13 @@
+import { useState } from 'react';
 import type { RangeRule } from '@/types';
 import type { EvaluatedRule } from '@/types';
 import { resolveRangePoints } from '@/lib/rules/ruleDocs';
 import {
-  RuleShell, Stepper, StepBtn, StepVal, StepUnit,
+  RuleShell,
   BodySm, Pill, FootRow, InputRow, InputSide,
 } from './RuleCard';
+import { NumericStepper } from './NumericStepper';
 import styled from 'styled-components';
-import { useDebouncedStepper } from './useDebouncedStepper';
 
 const RangeBand = styled.div`
   position: relative;
@@ -53,10 +54,9 @@ interface Props {
 
 export function RangeRuleCard({ rule, evaluated, locked, lockedAt, onChange }: Props) {
   const serverValue = evaluated?.rawValue as number | null ?? null;
-  const { localValue: value, update } = useDebouncedStepper(serverValue, onChange);
+  const [displayValue, setDisplayValue] = useState<number | null>(serverValue);
   const points = evaluated?.points ?? null;
 
-  // Visual range: extend 25% on each side of target range
   const range = rule.max - rule.min;
   const visMin = Math.max(0, rule.min - range * 0.25);
   const visMax = rule.max + range * 0.25;
@@ -65,18 +65,14 @@ export function RangeRuleCard({ rule, evaluated, locked, lockedAt, onChange }: P
   const toPercent = (v: number) => ((v - visMin) / visTotalRange) * 100;
   const targetLeft = toPercent(rule.min);
   const targetRight = toPercent(rule.max);
-  const needlePos = value !== null ? toPercent(value) : null;
+  const needlePos = displayValue !== null ? toPercent(displayValue) : null;
 
-  const inBand = value !== null && value >= rule.min && value <= rule.max;
+  const inBand = displayValue !== null && displayValue >= rule.min && displayValue <= rule.max;
   const { atMin, atMax } = resolveRangePoints(rule);
   const bandPtsLabel =
     atMin === atMax
       ? `${atMin} pts in band`
       : `${atMin}→${atMax} pts in band`;
-
-  const step = rule.decimals === 0 ? 1 : Math.pow(10, -rule.decimals);
-  const decrement = () => update(Math.round(((value ?? rule.min) - step) * 1e6) / 1e6);
-  const increment = () => update(Math.round(((value ?? rule.min) + step) * 1e6) / 1e6);
 
   return (
     <RuleShell
@@ -87,21 +83,22 @@ export function RangeRuleCard({ rule, evaluated, locked, lockedAt, onChange }: P
       footer={
         <FootRow>
           <BodySm>Target band: {rule.min}–{rule.max} {rule.unit} · {bandPtsLabel}</BodySm>
-          {value !== null && (
+          {displayValue !== null && (
             <Pill $variant={inBand ? 'good' : 'outline'}>{inBand ? 'In band' : 'Out of band'}</Pill>
           )}
         </FootRow>
       }
     >
       <InputRow>
-        <Stepper>
-          <StepBtn onClick={decrement} disabled={locked}>−</StepBtn>
-          <StepVal>
-            {value !== null ? value.toFixed(rule.decimals) : '—'}
-            <StepUnit>{rule.unit}</StepUnit>
-          </StepVal>
-          <StepBtn onClick={increment} disabled={locked}>+</StepBtn>
-        </Stepper>
+        <NumericStepper
+          serverValue={serverValue}
+          onChange={onChange}
+          onLocalChange={setDisplayValue}
+          decimals={rule.decimals}
+          unit={rule.unit}
+          locked={locked}
+          stepBase={rule.min}
+        />
         <InputSide style={{ paddingLeft: 12 }}>
           <RangeBand>
             <Scale>

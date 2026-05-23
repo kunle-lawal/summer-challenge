@@ -10,11 +10,12 @@ import { formatRuleFormula } from "@/lib/rules/ruleDocs";
 export const CardWrap = styled.div<{ $locked: boolean }>`
 	background: ${({ theme, $locked }) =>
 		$locked ? theme.color.bg : theme.color.surface};
-	border: 1px solid
-		${({ theme, $locked }) => ($locked ? theme.color.hair2 : theme.color.hair)};
+	border: 2px solid
+		${({ theme, $locked }) => ($locked ? theme.color.hair2 : theme.color.ink4)};
 	border-style: ${({ $locked }) => ($locked ? "dashed" : "solid")};
 	border-radius: ${({ theme }) => theme.radii.md};
 	padding: 14px;
+	box-shadow: 0 1px 0 rgba(24, 23, 15, 0.04);
 `;
 
 export const CardTop = styled.div`
@@ -165,6 +166,8 @@ interface RuleShellProps {
 	points: number | null;
 	locked: boolean;
 	lockedAt?: string;
+	/** Overrides the default formula line under the rule name. */
+	metaLine?: string;
 	children: ReactNode;
 	footer?: ReactNode;
 }
@@ -174,6 +177,7 @@ export function RuleShell({
 	points,
 	locked,
 	lockedAt,
+	metaLine,
 	children,
 	footer,
 }: RuleShellProps) {
@@ -196,7 +200,7 @@ export function RuleShell({
 					<RuleMeta>
 						<KindLabel>{rule.kind}</KindLabel>
 						<DotSep />
-						<Formula>{ruleFormula(rule)}</Formula>
+						<Formula>{metaLine ?? ruleFormula(rule)}</Formula>
 					</RuleMeta>
 				</div>
 				<PtsDisplay>
@@ -318,6 +322,29 @@ export const StepVal = styled.div`
 	border-left: 1px solid ${({ theme }) => theme.color.hair};
 	border-right: 1px solid ${({ theme }) => theme.color.hair};
 	background: ${({ theme }) => theme.color.surface};
+`;
+
+export const StepValField = styled.input`
+	flex: 1;
+	min-width: 0;
+	width: 100%;
+	padding: 10px 4px;
+	text-align: center;
+	border: 0;
+	background: transparent;
+	font-family: ${({ theme }) => theme.font.display};
+	font-size: 22px;
+	line-height: 1;
+	color: ${({ theme }) => theme.color.ink};
+	font-variant-numeric: tabular-nums;
+	outline: none;
+	&:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	&::placeholder {
+		color: ${({ theme }) => theme.color.ink4};
+	}
 `;
 
 export const StepUnit = styled.span`

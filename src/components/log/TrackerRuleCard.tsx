@@ -1,19 +1,33 @@
 import { useState } from 'react';
 import type { TrackerRule, Member, TrackerDirection } from '@/types';
-import { useDebouncedStepper } from './useDebouncedStepper';
+import { resolveTrackerConfig } from '@/types/member';
 import type { EvaluatedRule } from '@/types';
 import styled from 'styled-components';
 import {
-  RuleShell, Stepper, StepBtn, StepVal, StepUnit,
-  BodySm, FootRow, InputRow, InputSide,
+  RuleShell,
+  BodySm, FootRow,
 } from './RuleCard';
+import { NumericStepper } from './NumericStepper';
+import { computeTrackerProgress } from '@/lib/rules/trackerProgress';
+import { formatTrackerMemberMeta } from '@/lib/rules/ruleDocs';
+
+const TRACKER_THUMB = '#2563eb';
+
+const TrackerLayout = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+`;
+
+const ProgressWrap = styled.div`
+  width: 100%;
+`;
 
 const TrackLine = styled.div`
   position: relative;
-  height: 4px;
-  background: ${({ theme }) => theme.color.bg2};
+  height: 6px;
+  background: ${({ theme }) => theme.color.hair2};
   border-radius: ${({ theme }) => theme.radii.pill};
-  margin: 8px 0 4px;
 `;
 
 const TrackFill = styled.div<{ $width: number }>`
@@ -21,47 +35,68 @@ const TrackFill = styled.div<{ $width: number }>`
   left: 0;
   top: 0;
   bottom: 0;
-  width: ${({ $width }) => Math.min(100, $width)}%;
+  width: ${({ $width }) => Math.min(100, Math.max(0, $width))}%;
   background: ${({ theme }) => theme.color.ink};
   border-radius: ${({ theme }) => theme.radii.pill};
+  transition: width 0.25s ease;
 `;
 
 const TrackMark = styled.div<{ $left: number }>`
   position: absolute;
   top: 50%;
-  width: 12px; height: 12px;
+  left: ${({ $left }) => Math.min(100, Math.max(0, $left))}%;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: ${({ theme }) => theme.color.accent};
-  border: 2px solid ${({ theme }) => theme.color.surface};
+  background: ${TRACKER_THUMB};
   transform: translate(-50%, -50%);
-  left: ${({ $left }) => Math.min(100, $left)}%;
+  z-index: 1;
+  transition: left 0.25s ease;
 `;
 
 const TrackLabels = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10px;
+  position: relative;
+  height: 24px;
+  margin-top: 10px;
+`;
+
+const EdgeLabel = styled.span<{ $side: 'left' | 'right' }>`
+  position: absolute;
+  top: 0;
+  ${({ $side }) => ($side === 'left' ? 'left: 0;' : 'right: 0;')}
+  font-family: ${({ theme }) => theme.font.body};
+  font-size: 11px;
   color: ${({ theme }) => theme.color.ink3};
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
 `;
 
-const MidVal = styled.span`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 13px;
-  color: ${({ theme }) => theme.color.ink};
-  text-transform: none;
-  letter-spacing: 0;
+const CurrentLabel = styled.span<{ $left: number; $regressed?: boolean }>`
+  position: absolute;
+  top: -1px;
+  left: ${({ $left }) => Math.min(100, Math.max(0, $left))}%;
+  transform: translateX(-50%);
+  font-family: ${({ theme }) => theme.font.body};
+  font-size: 15px;
+  font-weight: 700;
+  color: ${({ theme, $regressed }) => ($regressed ? theme.color.bad : theme.color.ink)};
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: left 0.25s ease, color 0.15s ease;
 `;
-
-// ── Setup form styles ──────────────────────────────────────────────────────────
 
 const SetupForm = styled.div`
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 2px 0 4px;
+`;
+
+const SetupIntro = styled.p`
+  font-size: 13px;
+  color: ${({ theme }) => theme.color.ink2};
+  line-height: 1.45;
+  margin: 0;
 `;
 
 const SetupRow = styled.div`
@@ -71,7 +106,7 @@ const SetupRow = styled.div`
 `;
 
 const SetupLabel = styled.label`
-  font-family: ${({ theme }) => theme.font.mono};
+  font-family: ${({ theme }) => theme.font.body};
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -124,6 +159,15 @@ const ErrTxt = styled.p`
   color: ${({ theme }) => theme.color.bad};
 `;
 
+export interface TrackerGoalInput {
+  ruleId: string;
+  label: string;
+  unit: string;
+  startVal: number;
+  goalVal: number;
+  direction: TrackerDirection;
+}
+
 interface Props {
   rule: TrackerRule;
   member: Member;
@@ -131,15 +175,24 @@ interface Props {
   locked: boolean;
   lockedAt?: string;
   onChange: (value: number) => void;
-  onSetGoal?: (config: { ruleId: string; startVal: number; goalVal: number; direction: TrackerDirection }) => Promise<void>;
+  onSetGoal?: (config: TrackerGoalInput) => Promise<void>;
+}
+
+function fmtVal(n: number, decimals: number): string {
+  return decimals === 0 ? String(Math.round(n)) : n.toFixed(decimals);
 }
 
 export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onChange, onSetGoal }: Props) {
-  const config = member.trackerConfig;
+  const rawConfig = member.trackerConfig?.ruleId === rule.id ? member.trackerConfig : null;
+  const config = rawConfig
+    ? resolveTrackerConfig(rawConfig, rule.unit, rule.name)
+    : null;
+
   const value = evaluated?.rawValue as number | null ?? null;
   const points = evaluated?.points ?? null;
 
-  // Setup form state (shown when no config yet)
+  const [labelInput, setLabelInput] = useState('');
+  const [unitInput, setUnitInput] = useState(rule.unit);
   const [startInput, setStartInput] = useState('');
   const [goalInput, setGoalInput] = useState('');
   const [direction, setDirection] = useState<TrackerDirection>('down');
@@ -147,33 +200,49 @@ export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onC
   const [setupError, setSetupError] = useState<string | null>(null);
 
   const serverValue = value ?? (config ? config.startVal : null);
-  const { localValue: displayValue, update } = useDebouncedStepper(serverValue, onChange);
-
   const startVal = config?.startVal ?? 0;
   const goalVal = config?.goalVal ?? 0;
   const configDir = config?.direction ?? 'down';
+  const memberUnit = config?.unit ?? rule.unit;
+  const [displayValue, setDisplayValue] = useState<number | null>(serverValue);
 
-  const total = Math.abs(goalVal - startVal);
-  const done = total > 0 && displayValue !== null
-    ? Math.min(1, Math.abs(displayValue - startVal) / total)
-    : 0;
-  const remaining = displayValue !== null ? Math.abs(goalVal - displayValue) : null;
+  const trackerProgress = config && displayValue !== null
+    ? computeTrackerProgress(
+        { startVal, goalVal, direction: configDir },
+        displayValue,
+      )
+    : null;
+  const progressPct = trackerProgress?.barPct ?? 0;
+  const remaining = trackerProgress?.remainingToGoal ?? null;
+  const regressed = trackerProgress?.regressed ?? false;
 
   const step = rule.decimals === 0 ? 1 : Math.pow(10, -rule.decimals);
-  const decrement = () => update(Math.round(((displayValue ?? startVal) - step) * 1e6) / 1e6);
-  const increment = () => update(Math.round(((displayValue ?? startVal) + step) * 1e6) / 1e6);
 
   if (!config) {
     const startNum = parseFloat(startInput);
     const goalNum = parseFloat(goalInput);
-    const canSave = !isNaN(startNum) && !isNaN(goalNum) && startNum !== goalNum && onSetGoal;
+    const labelTrim = labelInput.trim();
+    const unitTrim = unitInput.trim() || rule.unit;
+    const canSave =
+      labelTrim.length > 0 &&
+      !isNaN(startNum) &&
+      !isNaN(goalNum) &&
+      startNum !== goalNum &&
+      !!onSetGoal;
 
     const handleSetGoal = async () => {
       if (!canSave) return;
       setSetupError(null);
       setSaving(true);
       try {
-        await onSetGoal!({ ruleId: rule.id, startVal: startNum, goalVal: goalNum, direction });
+        await onSetGoal!({
+          ruleId: rule.id,
+          label: labelTrim,
+          unit: unitTrim,
+          startVal: startNum,
+          goalVal: goalNum,
+          direction,
+        });
       } catch {
         setSetupError('Could not save goal. Please try again.');
       } finally {
@@ -182,96 +251,142 @@ export function TrackerRuleCard({ rule, member, evaluated, locked, lockedAt, onC
     };
 
     return (
-      <RuleShell rule={rule} points={0} locked={false} footer={
-        <FootRow>
-          <BodySm>Set once — your goal locks in and can't be changed later.</BodySm>
-        </FootRow>
-      }>
+      <RuleShell
+        rule={rule}
+        points={0}
+        locked={false}
+        footer={
+          <FootRow>
+            <BodySm>Locks in once saved — ask the owner if you need to change it later.</BodySm>
+          </FootRow>
+        }
+      >
         <SetupForm>
+          <SetupIntro>
+            What do you want to track? Pick a direction and set your starting and goal values.
+          </SetupIntro>
+          <FieldBlock>
+            <SetupLabel htmlFor={`tracker-label-${rule.id}`}>What are you tracking?</SetupLabel>
+            <SetupInput
+              id={`tracker-label-${rule.id}`}
+              type="text"
+              placeholder="e.g. Weight loss, Squat PR, Waist"
+              value={labelInput}
+              onChange={e => setLabelInput(e.target.value)}
+            />
+          </FieldBlock>
           <SetupRow>
-            <div>
-              <SetupLabel>Starting {rule.unit}</SetupLabel>
+            <FieldBlock>
+              <SetupLabel htmlFor={`tracker-unit-${rule.id}`}>Unit</SetupLabel>
               <SetupInput
+                id={`tracker-unit-${rule.id}`}
+                type="text"
+                placeholder={rule.unit}
+                value={unitInput}
+                onChange={e => setUnitInput(e.target.value)}
+              />
+            </FieldBlock>
+            <FieldBlock>
+              <SetupLabel htmlFor={`tracker-start-${rule.id}`}>Starting value</SetupLabel>
+              <SetupInput
+                id={`tracker-start-${rule.id}`}
                 type="number"
                 step={step}
-                placeholder="e.g. 185"
+                placeholder="e.g. 190"
                 value={startInput}
                 onChange={e => setStartInput(e.target.value)}
               />
-            </div>
-            <div>
-              <SetupLabel>Goal {rule.unit}</SetupLabel>
+            </FieldBlock>
+            <FieldBlock>
+              <SetupLabel htmlFor={`tracker-goal-${rule.id}`}>Goal value</SetupLabel>
               <SetupInput
+                id={`tracker-goal-${rule.id}`}
                 type="number"
                 step={step}
                 placeholder="e.g. 170"
                 value={goalInput}
                 onChange={e => setGoalInput(e.target.value)}
               />
-            </div>
+            </FieldBlock>
           </SetupRow>
-          <div>
+          <FieldBlock>
             <SetupLabel>Direction</SetupLabel>
             <SetupRow>
-              <DirBtn $active={direction === 'down'} onClick={() => setDirection('down')}>
+              <DirBtn type="button" $active={direction === 'down'} onClick={() => setDirection('down')}>
                 ↓ Decreasing
-                <span style={{ display: 'block', fontSize: 10, opacity: 0.65, marginTop: 2 }}>weight, time</span>
+                <span style={{ display: 'block', fontSize: 10, opacity: 0.65, marginTop: 2 }}>loss, time, measurements</span>
               </DirBtn>
-              <DirBtn $active={direction === 'up'} onClick={() => setDirection('up')}>
+              <DirBtn type="button" $active={direction === 'up'} onClick={() => setDirection('up')}>
                 ↑ Increasing
-                <span style={{ display: 'block', fontSize: 10, opacity: 0.65, marginTop: 2 }}>reps, distance</span>
+                <span style={{ display: 'block', fontSize: 10, opacity: 0.65, marginTop: 2 }}>strength, mass, reps</span>
               </DirBtn>
             </SetupRow>
-          </div>
+          </FieldBlock>
           {setupError && <ErrTxt>{setupError}</ErrTxt>}
           {onSetGoal ? (
-            <SetupBtn onClick={handleSetGoal} disabled={!canSave || saving}>
-              {saving ? 'Saving…' : 'Set goal'}
+            <SetupBtn type="button" onClick={handleSetGoal} disabled={!canSave || saving}>
+              {saving ? 'Saving…' : 'Set my goal'}
             </SetupBtn>
           ) : (
-            <BodySm>Log in as a member to set your goal.</BodySm>
+            <BodySm>Pick a member to set your goal.</BodySm>
           )}
         </SetupForm>
       </RuleShell>
     );
   }
 
+  const metaLine = formatTrackerMemberMeta(config, rule);
+
   return (
     <RuleShell
       rule={rule}
+      metaLine={metaLine}
       points={points}
       locked={locked}
       lockedAt={lockedAt}
       footer={
         <FootRow>
           <BodySm>
-            {remaining !== null ? `${remaining.toFixed(rule.decimals)} ${rule.unit} ${configDir === 'down' ? 'to lose' : 'to gain'}` : ''}
-            {' · '}{Math.round(done * 100)}% there
+            {remaining !== null
+              ? `${remaining.toFixed(rule.decimals)} ${memberUnit} ${configDir === 'down' ? 'to lose' : 'to gain'}`
+              : ''}
+            {regressed
+              ? configDir === 'down'
+                ? ' · above start'
+                : ' · below start'
+              : ''}
+            {' · '}{Math.round(progressPct)}% there
           </BodySm>
         </FootRow>
       }
     >
-      <InputRow>
-        <Stepper>
-          <StepBtn onClick={decrement} disabled={locked}>−</StepBtn>
-          <StepVal>
-            {displayValue !== null ? displayValue.toFixed(rule.decimals) : '—'}
-            <StepUnit>{rule.unit}</StepUnit>
-          </StepVal>
-          <StepBtn onClick={increment} disabled={locked}>+</StepBtn>
-        </Stepper>
-        <InputSide style={{ flexDirection: 'column', gap: 0, paddingLeft: 4 }}>
+      <TrackerLayout>
+        <NumericStepper
+          serverValue={serverValue}
+          onChange={onChange}
+          onLocalChange={setDisplayValue}
+          decimals={rule.decimals}
+          unit={memberUnit}
+          locked={locked}
+          stepBase={startVal}
+        />
+
+        <ProgressWrap>
           <TrackLine>
-            <TrackFill $width={done * 100} />
-            <TrackMark $left={done * 100} />
+            <TrackFill $width={progressPct} />
+            <TrackMark $left={progressPct} />
           </TrackLine>
           <TrackLabels>
-            <span>{startVal}</span>
-            <MidVal>{displayValue ?? '—'}</MidVal>
-            <span>{goalVal}</span>
+            <EdgeLabel $side="left">{fmtVal(startVal, rule.decimals)}</EdgeLabel>
+            <CurrentLabel $left={progressPct} $regressed={regressed}>
+              {displayValue !== null ? fmtVal(displayValue, rule.decimals) : '—'}
+            </CurrentLabel>
+            <EdgeLabel $side="right">{fmtVal(goalVal, rule.decimals)}</EdgeLabel>
           </TrackLabels>
-        </InputSide>
-      </InputRow>
+        </ProgressWrap>
+      </TrackerLayout>
     </RuleShell>
   );
 }
+
+const FieldBlock = styled.div``;

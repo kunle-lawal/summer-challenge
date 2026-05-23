@@ -194,8 +194,9 @@ function ruleDetails(r: Rule): Array<{ label: string; value: string }> {
 			d.push({ label: "Tracks", value: r.ruleRef });
 			break;
 		case "tracker":
-			d.push({ label: "Unit", value: r.unit });
+			d.push({ label: "Default unit", value: r.unit });
 			d.push({ label: "Max pts", value: `+${r.maxPoints}` });
+			d.push({ label: "Member sets", value: "Label, start, goal, direction" });
 			break;
 	}
 	return d;

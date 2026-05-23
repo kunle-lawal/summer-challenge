@@ -83,11 +83,11 @@ export function TopBar({ slug, challengeName }: Props) {
   return (
     <Sidebar>
       <Brand title={challengeName}>{challengeName}</Brand>
-      <Item to={base} end>
+      <Item to={`${base}/home`}>
         <HomeIcon />
         Home
       </Item>
-      <Item to={`${base}/log`}>
+      <Item to={base} end>
         <LogIcon />
         Log day
       </Item>

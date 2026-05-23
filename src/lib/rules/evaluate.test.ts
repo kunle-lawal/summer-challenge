@@ -381,6 +381,8 @@ describe('tracker rule', () => {
   const memberWithGoal = makeMember({
     trackerConfig: {
       ruleId: 'weight',
+      label: 'Weight loss',
+      unit: 'lb',
       startVal: 200,
       goalVal: 180,
       direction: 'down',
@@ -419,10 +421,17 @@ describe('tracker rule', () => {
     expect(evaluateEntry(challenge, entry, memberWithGoal, [entry]).perRule['weight']?.points).toBe(30);
   });
 
+  it('awards 0 pts when value regresses past start (direction=down)', () => {
+    const entry = makeEntry('2024-06-01', { weight: 204 });
+    expect(evaluateEntry(challenge, entry, memberWithGoal, [entry]).perRule['weight']?.points).toBe(0);
+  });
+
   it('awards proportional pts for direction=up', () => {
     const memberUp = makeMember({
       trackerConfig: {
         ruleId: 'weight',
+        label: 'Rep count',
+        unit: 'reps',
         startVal: 0,
         goalVal: 100,
         direction: 'up',
