@@ -106,18 +106,43 @@ export interface BinaryRule extends BaseRule {
 // ---------------------------------------------------------------------------
 
 /**
+ * What happens once the target is beaten.
+ *
+ *  - `'cap'` — the target is the ceiling. 20 000 steps scores the same as
+ *    10 000. The original behaviour, and the default.
+ *  - `'linear'` — points keep scaling at the same rate, so double the target
+ *    is double the points. Use `dailyMax` to put a lid on it, or leave that
+ *    null for a genuinely open-ended rule.
+ */
+export const COUNTER_OVERFLOWS = ['cap', 'linear'] as const;
+export type CounterOverflow = (typeof COUNTER_OVERFLOWS)[number];
+
+/**
  * A numeric daily metric scored against a target. The user logs a number;
- * points scale linearly from 0 (no progress) to maxPoints (target hit or
- * exceeded). v1's steps rule (10k = 5 pts) is a `counter`.
+ * points scale linearly from 0 up to `maxPoints` at the target. v1's steps
+ * rule (10k = 5 pts) is a `counter`.
  *
  * Value type in entries: `number`
  */
 export interface CounterRule extends BaseRule {
   kind: 'counter';
-  /** Value at which maxPoints is reached. Values above this also award maxPoints. */
+  /** Value at which `maxPoints` is reached. */
   target: number;
-  /** Max points the rule can award in a day. */
+  /** Points awarded at exactly the target. */
   maxPoints: number;
+  /**
+   * What beating the target is worth. Absent means `'cap'`, so counters
+   * written before this existed keep scoring exactly as they did.
+   */
+  overflow?: CounterOverflow;
+  /**
+   * Ceiling on a single day when `overflow` is `'linear'`. Null or absent
+   * means no ceiling at all — one enormous day can outscore a whole week, so
+   * set it unless that's the point.
+   *
+   * Ignored when `overflow` is `'cap'`, where `maxPoints` is already the lid.
+   */
+  dailyMax?: number | null;
   /** Display unit, e.g. "steps", "cups", "miles". */
   unit: string;
   /** How many decimal places to display the value with. 0 for steps, 1 for miles. */

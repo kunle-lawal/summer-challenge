@@ -11,9 +11,12 @@
 
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
+  setDoc,
+  updateDoc,
   writeBatch,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -104,6 +107,9 @@ export async function addMember(
     createdAt: serverTimestamp() as never,
     active: true,
     removedAt: null,
+    // Slots are created empty. The person they belong to claims their own —
+    // the rules refuse a slot created pre-assigned to someone else.
+    uid: null,
   };
 
   const batch = writeBatch(db);
@@ -313,4 +319,64 @@ export async function restoreMember(
 
   await batch.commit();
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Claiming a slot
+// ---------------------------------------------------------------------------
+
+export type ClaimSlotResult =
+  | { ok: true }
+  | { ok: false; reason: 'not_found' }
+  | { ok: false; reason: 'taken' }
+  | { ok: false; reason: 'already_joined'; memberId: string };
+
+/**
+ * Bind the signed-in account to a member slot.
+ *
+ * Two documents change. `membership/{uid}` is the one the security rules read,
+ * because a rule can fetch a document by id but cannot query a collection —
+ * so "is this account a member?" has to be answerable at a predictable path.
+ * `members/{memberId}.uid` mirrors it for display.
+ *
+ * They are written separately rather than in a batch, and deliberately in this
+ * order: the membership record is what grants access, so if the second write
+ * fails the caller is still a member and can simply retry. The rules accept a
+ * repeat of an identical claim for exactly that reason.
+ */
+export async function claimMemberSlot(
+  challengeId: string,
+  memberId: string,
+  uid: string,
+): Promise<ClaimSlotResult> {
+  const existing = await getDoc(doc(db, 'challenges', challengeId, 'membership', uid));
+  if (existing.exists()) {
+    const held = (existing.data() as { memberId: string }).memberId;
+    if (held !== memberId) return { ok: false, reason: 'already_joined', memberId: held };
+  }
+
+  const memberRef = doc(db, 'challenges', challengeId, 'members', memberId);
+  const snap = await getDoc(memberRef);
+  if (!snap.exists()) return { ok: false, reason: 'not_found' };
+
+  const member = snap.data() as Member;
+  if (member.uid && member.uid !== uid) return { ok: false, reason: 'taken' };
+
+  await setDoc(doc(db, 'challenges', challengeId, 'membership', uid), {
+    memberId,
+    joinedAt: serverTimestamp(),
+  });
+  await updateDoc(memberRef, { uid });
+
+  return { ok: true };
+}
+
+/** Let go of a slot, so somebody else can take it. */
+export async function releaseMemberSlot(
+  challengeId: string,
+  memberId: string,
+  uid: string,
+): Promise<void> {
+  await deleteDoc(doc(db, 'challenges', challengeId, 'membership', uid));
+  await updateDoc(doc(db, 'challenges', challengeId, 'members', memberId), { uid: null });
 }

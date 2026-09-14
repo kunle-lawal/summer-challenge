@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
-import { useAdminMode } from '@/context/AdminModeContext';
+import { useAuth } from '@/context/AuthContext';
 import { isRuleActive, type Member, type Rule } from '@/types';
 import { changeChallengeStatus, deleteChallenge, renameChallenge, updateChallengeConfig } from '@/lib/challenges';
 import { addMember, removeMember, renameMember, restoreMember } from '@/lib/members';
@@ -29,34 +29,6 @@ type View = 'settings' | 'audit';
 // ---------------------------------------------------------------------------
 // Styling
 // ---------------------------------------------------------------------------
-
-const Gate = styled.div`
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 18px;
-  padding: 24px 20px 40px;
-
-  > .lock {
-    width: 44px;
-    height: 44px;
-    border-radius: ${({ theme }) => theme.radii.md};
-    border: 1px solid ${({ theme }) => theme.color.hair};
-    background: ${({ theme }) => theme.color.surface};
-    display: grid;
-    place-items: center;
-    color: ${({ theme }) => theme.color.ink2};
-    svg { width: 20px; height: 20px; }
-  }
-
-  p {
-    font-size: 14px;
-    line-height: 21px;
-    color: ${({ theme }) => theme.color.ink2};
-    font-weight: 500;
-  }
-`;
 
 const Section = styled.section`
   display: flex;
@@ -95,72 +67,6 @@ const ChangeList = styled.dl`
 // ---------------------------------------------------------------------------
 // Password gate
 // ---------------------------------------------------------------------------
-
-function AdminGate({ onBack }: { onBack: () => void }) {
-  const { enterAdminMode, entering, lastError } = useAdminMode();
-  const { selectedMemberId } = useSelectedMember();
-  const [password, setPassword] = useState('');
-  const [dismissed, setDismissed] = useState(false);
-
-  const submit = () => {
-    if (password.trim().length === 0) return;
-    setDismissed(false);
-    void enterAdminMode(password, selectedMemberId);
-  };
-
-  const error = !dismissed && lastError !== null;
-
-  return (
-    <Body>
-      <TopBar
-        title="Settings"
-        sub="Owner only"
-        left={
-          <IconButton type="button" aria-label="Back" onClick={onBack}>
-            <Icon name="back" />
-          </IconButton>
-        }
-      />
-      <Gate>
-        <span className="lock">
-          <Icon name="lock" />
-        </span>
-        <div>
-          <h1>Enter the owner password</h1>
-          <p>
-            Rules, dates and members can be changed while the challenge is running — but only by
-            whoever set it up. Every change is written to history.
-          </p>
-        </div>
-        <Field>
-          <label htmlFor="owner-pw">Owner password</label>
-          <Input
-            id="owner-pw"
-            $text
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={e => {
-              setPassword(e.target.value);
-              setDismissed(true);
-            }}
-            onKeyDown={e => e.key === 'Enter' && submit()}
-          />
-          {error && (
-            <ErrorText role="alert">
-              {lastError === 'challenge_not_loaded'
-                ? 'The challenge is still loading. Give it a second and try again.'
-                : 'That password doesn’t match. There’s no way to reset it — ask whoever created the challenge.'}
-            </ErrorText>
-          )}
-        </Field>
-        <Button type="button" $block disabled={password.trim().length === 0 || entering} onClick={submit}>
-          {entering ? 'Checking…' : 'Unlock settings'}
-        </Button>
-      </Gate>
-    </Body>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Audit log
@@ -281,7 +187,8 @@ function AuditView({ onBack }: { onBack: () => void }) {
 export function AdminPage() {
   const { challenge, members, entries, activeMembers } = useChallenge();
   const { selectedMemberId } = useSelectedMember();
-  const { isAdmin, exitAdminMode } = useAdminMode();
+  const { isOwner } = useChallenge();
+  const { uid } = useAuth();
   const navigate = useNavigate();
 
   const [view, setView] = useState<View>('settings');
@@ -298,7 +205,7 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const actor = { memberId: selectedMemberId, isOwner: true };
+  const actor = { uid: uid ?? '', memberId: selectedMemberId, isOwner: true };
 
   const stats = useMemo(() => {
     if (!challenge) return null;
@@ -318,7 +225,29 @@ export function AdminPage() {
 
   const back = () => navigate(`/c/${challenge.slug}`);
 
-  if (!isAdmin) return <AdminGate onBack={back} />;
+  // Not a mode you unlock any more — either the account owns this challenge
+  // or it doesn't, and the security rules reach the same conclusion
+  // independently, so hiding the controls and refusing the writes agree.
+  if (!isOwner) {
+    return (
+      <Body>
+        <TopBar
+          title="Settings"
+          sub={challenge.name}
+          left={
+            <IconButton type="button" aria-label="Back" onClick={back}>
+              <Icon name="back" />
+            </IconButton>
+          }
+        />
+        <EmptyState
+          title="Only the owner can change this"
+          body={`${challenge.name} belongs to whoever set it up. Ask them to make the change, or start a challenge of your own.`}
+          action={{ label: 'Back to home', onClick: back }}
+        />
+      </Body>
+    );
+  }
   if (view === 'audit') return <AuditView onBack={() => setView('settings')} />;
 
   const rules = [...challenge.config.rules].sort((a, b) => a.order - b.order);
@@ -463,11 +392,7 @@ export function AdminPage() {
                 <Icon name="back" />
               </IconButton>
             }
-            right={
-              <IconButton type="button" $onPanel aria-label="Lock settings" onClick={exitAdminMode}>
-                <Icon name="lock" />
-              </IconButton>
-            }
+
           />
           {stats?.pct !== null && stats?.pct !== undefined && stats.daysLeft !== null && (
             <HeroProgress

@@ -661,6 +661,7 @@ SPA: all routes → `index.html`.
 | [`V2_PLAN.md`](V2_PLAN.md) | Original v2 design decisions |
 | [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md) | Visual / UX brief (pre-redesign) |
 | [`REDESIGN_DECISIONS.md`](REDESIGN_DECISIONS.md) | What changed in the v2 redesign and why |
+| [`PRODUCT_OPTIONS.md`](PRODUCT_OPTIONS.md) | Where the product could go, and in what order |
 | [`ui-design-patterns.md`](ui-design-patterns.md) | UI standards every change is held to |
 | `challenge 2/` | The Claude Design handoff bundle this redesign implements |
 | [`LEGACY_INDEX_REFERENCE.md`](../LEGACY_INDEX_REFERENCE.md) | Pre-React monolith |

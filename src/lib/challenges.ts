@@ -15,14 +15,13 @@ import {
   getDocs,
   collection,
   writeBatch,
-  runTransaction,
+  setDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { customAlphabet } from 'nanoid';
 import { db } from './firebase';
-import { hashPassword } from './ownerAuth';
 import { isOnCooldown, getCooldownRemainingMs, recordCreateTimestamp } from './createCooldown';
-import { appendAuditLog, appendAuditLogTx, type ActorContext, type AuditParams } from './audit';
+import { appendAuditLog, type ActorContext } from './audit';
 import type { Challenge, ChallengeConfig, ChallengeStatus, SlugIndexEntry } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -67,8 +66,8 @@ export type DeleteChallengeResult =
 
 export interface CreateChallengeParams {
   name: string;
-  /** Plain-text password — hashed before storage. */
-  password: string;
+  /** The signed-in account creating it. Becomes `ownerUid`, immutably. */
+  ownerUid: string;
   config: ChallengeConfig;
 }
 
@@ -89,7 +88,7 @@ export async function createChallenge(
     return { ok: false, reason: 'cooldown', remainingMs: cooldownRemaining };
   }
 
-  const { hash: ownerPasswordHash, salt: ownerPasswordSalt } = await hashPassword(params.password);
+  const actor: ActorContext = { uid: params.ownerUid, memberId: null, isOwner: true };
 
   for (let attempt = 0; attempt < MAX_SLUG_RETRIES; attempt++) {
     const slug = generateSlug();
@@ -97,42 +96,45 @@ export async function createChallenge(
     const challengeId = challengeRef.id;
     const slugRef = doc(db, 'slugIndex', slug);
 
-    const actor: ActorContext = { memberId: null, isOwner: false };
+    const challengeData = {
+      slug,
+      name: params.name,
+      createdAt: serverTimestamp(),
+      status: 'active' as ChallengeStatus,
+      ownerUid: params.ownerUid,
+      config: params.config,
+    };
+
+    /*
+     * Two sequential writes rather than one transaction, because the rule
+     * guarding slugIndex checks that you own the challenge the slug points at —
+     * and rules evaluate against committed state, so the challenge has to exist
+     * first. The cost is that a failure between the two leaves an unreachable
+     * challenge document; the benefit is that nobody can point a slug at a
+     * challenge they don't own, which is how links were hijackable before.
+     */
+    await setDoc(challengeRef, challengeData);
 
     try {
-      await runTransaction(db, async (tx) => {
-        const slugSnap = await tx.get(slugRef);
-        if (slugSnap.exists()) throw new Error('slug_taken');
-
-        const challengeData = {
-          slug,
-          name: params.name,
-          createdAt: serverTimestamp(),
-          status: 'active' as ChallengeStatus,
-          ownerPasswordHash,
-          ownerPasswordSalt,
-          config: params.config,
-        };
-
-        tx.set(challengeRef, challengeData);
-        tx.set(slugRef, { challengeId } satisfies SlugIndexEntry);
-
-        const auditParams: AuditParams = {
-          actor,
-          action: 'challenge.create',
-          target: { kind: 'challenge', id: challengeId },
-          before: null,
-          after: challengeData,
-        };
-        appendAuditLogTx(tx, challengeId, auditParams);
-      });
-
-      recordCreateTimestamp();
-      return { ok: true, challengeId, slug };
-    } catch (err) {
-      if (err instanceof Error && err.message === 'slug_taken') continue;
-      throw err;
+      await setDoc(slugRef, { challengeId } satisfies SlugIndexEntry);
+    } catch {
+      // Almost always the slug already existing. Try another one; the orphaned
+      // challenge document is unreachable and harmless.
+      continue;
     }
+
+    const batch = writeBatch(db);
+    appendAuditLog(batch, challengeId, {
+      actor,
+      action: 'challenge.create',
+      target: { kind: 'challenge', id: challengeId },
+      before: null,
+      after: challengeData,
+    });
+    await batch.commit();
+
+    recordCreateTimestamp();
+    return { ok: true, challengeId, slug };
   }
 
   return { ok: false, reason: 'slug_exhausted' };

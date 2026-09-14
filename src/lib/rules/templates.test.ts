@@ -184,6 +184,20 @@ describe.each(withRules)('$template.name — fairness', ({ template, rules }) =>
     }
   });
 
+  /*
+   * A counter that keeps paying past its target has a ceiling far above what
+   * anyone would realistically do, so it blows the quarter-of-the-challenge
+   * budget by construction. It's a deliberate option for a custom challenge,
+   * not something to ship inside a balanced template.
+   */
+  it('has no counter without a ceiling', () => {
+    for (const rule of rules) {
+      if (rule.kind !== 'counter') continue;
+      const unbounded = (rule.overflow ?? 'cap') === 'linear' && rule.dailyMax == null;
+      expect(unbounded, `${rule.name} can pay without limit`).toBe(false);
+    }
+  });
+
   it('includes a personal goal, so it is not decided by who started fitter', () => {
     expect(rules.some(r => r.kind === 'tracker')).toBe(true);
   });

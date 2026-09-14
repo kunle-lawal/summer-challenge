@@ -5,7 +5,10 @@
  * or transaction so the audit entry is always co-written with the change.
  * The audit log is the ground truth for "who did what, when."
  *
- * Security note: actorMemberId and actorIsOwner are not tamper-proof (there
+ * Security note: actorUid is enforced by the security rules — a row whose
+ * actorUid is not the caller's own uid is rejected, as is a row claiming
+ * actorIsOwner on a challenge the caller doesn't own. actorMemberId remains
+ * attribution rather than proof (there
  * is no auth). They record behavioural intent for a trusted group. See V2_PLAN §8.2.
  */
 
@@ -28,9 +31,20 @@ import type { AuditAction, AuditTarget } from '../types';
  * audit log is populated correctly without callers repeating themselves.
  */
 export interface ActorContext {
-  /** The locally-selected memberId on the device performing the action, or null. */
+  /**
+   * The signed-in account performing the action.
+   *
+   * Unlike `memberId`, this is not self-reported: the security rules require
+   * every audit row's `actorUid` to equal `request.auth.uid`, so history can no
+   * longer be written in somebody else's name.
+   */
+  uid: string;
+  /** The member slot this account holds in the challenge, or null. */
   memberId: string | null;
-  /** True when the user has unlocked admin mode with the owner password. */
+  /**
+   * True when this account owns the challenge. Also checked by the rules
+   * against `challenge.ownerUid`, so it cannot simply be asserted.
+   */
   isOwner: boolean;
 }
 
@@ -93,6 +107,7 @@ export function appendAuditLogTx(
 function buildAuditDoc(params: AuditParams): Record<string, unknown> {
   return {
     timestamp: serverTimestamp(),
+    actorUid: params.actor.uid,
     actorMemberId: params.actor.memberId,
     actorIsOwner: params.actor.isOwner,
     action: params.action,

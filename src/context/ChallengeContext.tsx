@@ -37,6 +37,7 @@ import {
 import { db } from '../lib/firebase';
 import { recordChallengeVisit } from '../lib/recentChallenges';
 import type { Challenge, Member, Entry, AuditLogEntry, SlugIndexEntry } from '../types';
+import { useAuth } from './AuthContext';
 
 // ---------------------------------------------------------------------------
 // Context value shape
@@ -63,6 +64,15 @@ export interface ChallengeContextValue {
 
   /** True when challenge.status === 'ended'. */
   isEnded: boolean;
+  /**
+   * True when the signed-in account created this challenge.
+   *
+   * Replaces the old "admin mode" — there is no longer a mode to enter, a
+   * password to type, or a per-tab session to keep. Ownership is a fact about
+   * the account, and the security rules check the same field independently, so
+   * hiding a control and refusing the write are now the same decision.
+   */
+  isOwner: boolean;
   /** Members where active === true, sorted by name. */
   activeMembers: Member[];
 }
@@ -98,6 +108,7 @@ interface Props {
  * All listeners are torn down and restarted when `slug` changes.
  */
 export function ChallengeProvider({ slug, children }: Props) {
+  const { uid } = useAuth();
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -231,6 +242,7 @@ export function ChallengeProvider({ slug, children }: Props) {
   }, [slug]);
 
   const isEnded = challenge?.status === 'ended';
+  const isOwner = uid !== null && challenge?.ownerUid === uid;
   const activeMembers = members
     .filter(m => m.active)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -244,6 +256,7 @@ export function ChallengeProvider({ slug, children }: Props) {
     entries,
     auditLog,
     isEnded,
+    isOwner,
     activeMembers,
   };
 

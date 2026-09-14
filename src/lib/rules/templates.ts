@@ -112,7 +112,14 @@ export function ceilingOf(rules: readonly Rule[], weeks: number): number {
         return total + (rule.weeklyCap
           ? rule.weeklyCap.maxScoringDays * maxDailyPoints(rule) * weeks
           : maxDailyPoints(rule) * days);
-      case 'counter':
+      case 'counter': {
+        // A counter that keeps paying past its target has no ceiling unless
+        // dailyMax gives it one.
+        const perDay = (rule.overflow ?? 'cap') === 'linear'
+          ? rule.dailyMax ?? Infinity
+          : rule.maxPoints;
+        return total + perDay * days;
+      }
       case 'range':
       case 'penalty':
         return total + maxDailyPoints(rule) * days;
