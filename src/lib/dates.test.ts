@@ -236,29 +236,36 @@ describe('getWeekWindow', () => {
 
 describe('isWithinEditWindow', () => {
   const now = new Date('2024-06-15T12:00:00Z'); // today = 2024-06-15 UTC
+  const bounds = { startDate: '2024-06-01' as const, endDate: '2024-06-30' as const };
 
   it('returns true for today', () => {
-    expect(isWithinEditWindow('2024-06-15', 'UTC', now)).toBe(true);
+    expect(isWithinEditWindow('2024-06-15', 'UTC', bounds, now)).toBe(true);
   });
 
-  it('returns true for yesterday', () => {
-    expect(isWithinEditWindow('2024-06-14', 'UTC', now)).toBe(true);
+  it('returns true for any past date within the challenge range', () => {
+    expect(isWithinEditWindow('2024-06-01', 'UTC', bounds, now)).toBe(true);
+    expect(isWithinEditWindow('2024-06-13', 'UTC', bounds, now)).toBe(true);
   });
 
-  it('returns false for the day before yesterday', () => {
-    expect(isWithinEditWindow('2024-06-13', 'UTC', now)).toBe(false);
+  it('returns false for dates before startDate', () => {
+    expect(isWithinEditWindow('2024-05-31', 'UTC', bounds, now)).toBe(false);
   });
 
   it('returns false for a future date', () => {
-    expect(isWithinEditWindow('2024-06-16', 'UTC', now)).toBe(false);
+    expect(isWithinEditWindow('2024-06-16', 'UTC', bounds, now)).toBe(false);
+  });
+
+  it('returns false for dates after endDate', () => {
+    expect(isWithinEditWindow('2024-07-01', 'UTC', bounds, now)).toBe(false);
   });
 
   it('respects the challenge timezone (timezone edge case)', () => {
     // 2024-06-15T02:00:00Z is still 2024-06-14 in America/New_York (EDT = UTC-4)
     const edgeNow = new Date('2024-06-15T02:00:00Z');
-    expect(isWithinEditWindow('2024-06-14', 'America/New_York', edgeNow)).toBe(true); // today
-    expect(isWithinEditWindow('2024-06-13', 'America/New_York', edgeNow)).toBe(true); // yesterday
-    expect(isWithinEditWindow('2024-06-15', 'America/New_York', edgeNow)).toBe(false); // "tomorrow"
+    const edgeBounds = { startDate: '2024-06-01' as const, endDate: null };
+    expect(isWithinEditWindow('2024-06-14', 'America/New_York', edgeBounds, edgeNow)).toBe(true);
+    expect(isWithinEditWindow('2024-06-13', 'America/New_York', edgeBounds, edgeNow)).toBe(true);
+    expect(isWithinEditWindow('2024-06-15', 'America/New_York', edgeBounds, edgeNow)).toBe(false);
   });
 });
 

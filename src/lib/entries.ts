@@ -3,8 +3,8 @@
  *
  * Enforces two key invariants on every write:
  *   1. Challenge must be 'active' — ended challenges are fully locked.
- *   2. Edit window — normal users can only write today or yesterday (in the
- *      challenge timezone). Owners with admin mode bypass this check.
+ *   2. Log date — must fall within the challenge date range and not be in
+ *      the future (relative to the challenge timezone).
  *
  * Points (`entry.pts`) are recomputed and snapshotted on every upsert by
  * calling the rule evaluator. The leaderboard re-derives its totals from
@@ -75,12 +75,12 @@ export async function upsertEntry(
   // ── 2. Status check ──────────────────────────────────────────────────────
   if (challenge.status === 'ended') return { ok: false, reason: 'challenge_ended' };
 
-  // ── 3. Edit window check ─────────────────────────────────────────────────
-  // Owners bypass the window; normal users are limited to today + yesterday.
-  if (!actor.isOwner) {
-    const editable = isWithinEditWindow(date, challenge.config.timezone);
-    if (!editable) return { ok: false, reason: 'edit_window_closed' };
-  }
+  // ── 3. Log date check ────────────────────────────────────────────────────
+  const editable = isWithinEditWindow(date, challenge.config.timezone, {
+    startDate: challenge.config.startDate,
+    endDate: challenge.config.endDate,
+  });
+  if (!editable) return { ok: false, reason: 'edit_window_closed' };
 
   // ── 4. Load member (for tracker config used in evaluation) ───────────────
   const memberSnap = await getDoc(doc(db, 'challenges', challengeId, 'members', memberId));

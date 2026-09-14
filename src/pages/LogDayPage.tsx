@@ -9,7 +9,6 @@ import { evaluateEntry } from "@/lib/rules/evaluate";
 import { buildWeeklySummary } from "@/lib/rules/aggregate";
 import {
 	todayInTz,
-	yesterdayInTz,
 	addDays,
 	isWithinEditWindow,
 	diffDays,
@@ -21,6 +20,7 @@ import { StreakBand } from "@/components/log/StreakRuleCard";
 import type { Entry, DateString, RawEntryValue, StreakRule } from "@/types";
 import type { TrackerGoalInput } from "@/components/log/TrackerRuleCard";
 import { isStreakRule } from "@/types";
+import { getStreakRunAtDate } from "@/lib/rules/streakRun";
 
 // ── Animations ────────────────────────────────────────────────────────────────
 
@@ -165,8 +165,7 @@ const DateChip = styled.button<{ $state: string; $selected: boolean }>`
 		$state === "today" ? theme.color.ink : theme.color.surface};
 	min-width: 52px;
 	cursor: ${({ $state }) => ($state === "future" ? "not-allowed" : "pointer")};
-	opacity: ${({ $state }) =>
-		$state === "future" ? 0.35 : $state === "locked" ? 0.55 : 1};
+	opacity: ${({ $state }) => ($state === "future" ? 0.35 : 1)};
 	position: relative;
 `;
 
@@ -422,7 +421,7 @@ function formatDayName(date: DateString, isToday: boolean): string {
 
 interface DateChipData {
 	date: DateString;
-	state: "today" | "logged" | "locked" | "future";
+	state: "today" | "logged" | "open" | "future";
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -442,7 +441,10 @@ export function LogDayPage() {
 
 	const tz = challenge.config.timezone;
 	const today = todayInTz(tz);
-	const yesterday = yesterdayInTz(tz);
+	const logDateBounds = {
+		startDate: challenge.config.startDate,
+		endDate: challenge.config.endDate,
+	};
 
 	const activeDate = selectedDate ?? today;
 
@@ -463,22 +465,26 @@ export function LogDayPage() {
 		(e) => e.date === activeDate,
 	);
 
-	// Build date strip: last 6 days + today + 2 future
+	// Build date strip: challenge start through today + 2 future preview days
 	const dateChips = useMemo((): DateChipData[] => {
 		const chips: DateChipData[] = [];
-		for (let i = -5; i <= 2; i++) {
-			const d = addDays(today, i);
+		const stripEnd = addDays(today, 2);
+		let d = challenge.config.startDate;
+		while (d <= stripEnd) {
 			let state: DateChipData["state"];
 			if (d === today) state = "today";
 			else if (d > today) state = "future";
 			else if (loggedDates.has(d)) state = "logged";
-			else state = "locked";
+			else state = "open";
 			chips.push({ date: d, state });
+			d = addDays(d, 1);
 		}
 		return chips;
-	}, [today, loggedDates]);
+	}, [today, loggedDates, challenge.config.startDate]);
 
-	const isLocked = !isWithinEditWindow(activeDate, tz) || isEnded;
+	const isLocked =
+		isEnded ||
+		!isWithinEditWindow(activeDate, tz, logDateBounds);
 
 	const isPreStart = today < challenge.config.startDate;
 
@@ -580,43 +586,20 @@ export function LogDayPage() {
 		return map;
 	}, [streakRules]);
 
-	// Current streak count for each streak rule (same algorithm as ruleCardRouter)
-	const streakCounts = useMemo(() => {
-		const counts: Record<string, number> = {};
+	// Streak run state per rule for the selected log date
+	const streakRuns = useMemo(() => {
+		const runs: Record<string, ReturnType<typeof getStreakRunAtDate>> = {};
 		for (const sr of streakRules) {
-			const positive = memberEntries
-				.filter((e) => {
-					const v = e.values[sr.ruleRef];
-					return (
-						v === "yes" ||
-						v === "free" ||
-						v === "clean" ||
-						typeof v === "number"
-					);
-				})
-				.sort((a, b) => a.date.localeCompare(b.date));
-			let streak = 0;
-			for (let i = positive.length - 1; i >= 0; i--) {
-				if (i === positive.length - 1) {
-					streak = 1;
-					continue;
-				}
-				const curr = positive[i];
-				const prev = positive[i - 1];
-				if (!curr || !prev) break;
-				const diffMs =
-					new Date(curr.date + "T00:00:00Z").getTime() -
-					new Date(prev.date + "T00:00:00Z").getTime();
-				if (diffMs === 86_400_000) {
-					streak++;
-				} else {
-					break;
-				}
-			}
-			counts[sr.id] = Math.min(streak, sr.daysRequired);
+			runs[sr.id] = getStreakRunAtDate(
+				challenge,
+				member,
+				memberEntries,
+				sr,
+				activeDate,
+			);
 		}
-		return counts;
-	}, [streakRules, memberEntries]);
+		return runs;
+	}, [streakRules, challenge, member, memberEntries, activeDate]);
 
 	// Streak rules whose tracked rule no longer exists → render standalone below the list
 	const orphanedStreakRules = useMemo(
@@ -626,20 +609,6 @@ export function LogDayPage() {
 			),
 		[streakRules, rules],
 	);
-
-	// Hours remaining until the edit window for yesterday closes (midnight in tz)
-	const editWindowHoursLeft = useMemo(() => {
-		if (activeDate !== yesterday) return null;
-		// Tomorrow midnight UTC = end of yesterday in tz (approximate — good enough for display)
-		const nowMs = Date.now();
-		const tzToday = todayInTz(tz);
-		// End of today = start of tomorrow midnight UTC
-		const endOfWindowMs =
-			new Date(tzToday + "T00:00:00Z").getTime() + 86_400_000;
-		const msLeft = endOfWindowMs - nowMs;
-		if (msLeft <= 0) return 0;
-		return Math.ceil(msLeft / 3_600_000);
-	}, [activeDate, yesterday, tz]);
 
 	// Compute human-readable "logged at" timestamp for locked cards
 	const lockedAt = useMemo(() => {
@@ -741,37 +710,13 @@ export function LogDayPage() {
 						</div>
 					</Banner>
 				)}
-				{!isEnded && !isPreStart && activeDate === today && (
-					<Banner>
-						<EditBannerKey>Editable</EditBannerKey>
-						<EditBannerText>
-							until end of {yesterday} (yesterday cutoff).
-						</EditBannerText>
+				{!isEnded && !isPreStart && isLocked && activeDate > today && (
+					<Banner $variant="locked">
+						<LockIcon />
+						<EditBannerKey>Future day</EditBannerKey>
+						<EditBannerText>Logging opens on {activeDate}.</EditBannerText>
 					</Banner>
 				)}
-				{!isEnded && !isPreStart && activeDate === yesterday && (
-					<Banner $variant="warn">
-						<EditBannerKey>Closes soon</EditBannerKey>
-						<EditBannerText>
-							{editWindowHoursLeft !== null && editWindowHoursLeft > 0
-								? `Editable for ${editWindowHoursLeft} more hour${editWindowHoursLeft !== 1 ? "s" : ""}. Locks at midnight.`
-								: "Edit window for this day ends at midnight."}
-						</EditBannerText>
-					</Banner>
-				)}
-				{!isEnded &&
-					!isPreStart &&
-					isLocked &&
-					activeDate !== today &&
-					activeDate !== yesterday && (
-						<Banner $variant="locked">
-							<LockIcon />
-							<EditBannerKey>Locked</EditBannerKey>
-							<EditBannerText>
-								Edit window closed for {activeDate}.
-							</EditBannerText>
-						</Banner>
-					)}
 
 				{/* Week summary */}
 				<WeekStrip>
@@ -862,6 +807,8 @@ export function LogDayPage() {
 										locked={isLocked || isPreStart}
 										lockedAt={lockedAt}
 										weekAnchor={challenge.config.weekAnchor}
+										challenge={challenge}
+										asOfDate={activeDate}
 										onSave={handleSave}
 										onSetTrackerGoal={handleSetTrackerGoal}
 									/>
@@ -869,7 +816,12 @@ export function LogDayPage() {
 										<StreakBand
 											key={sr.id}
 											rule={sr}
-											currentStreak={streakCounts[sr.id] ?? 0}
+											run={streakRuns[sr.id] ?? {
+												runDates: [],
+												count: 0,
+												complete: false,
+												brokenOnDate: false,
+											}}
 										/>
 									))}
 								</RuleGroup>
@@ -887,6 +839,8 @@ export function LogDayPage() {
 								locked={isLocked || isPreStart}
 								lockedAt={lockedAt}
 								weekAnchor={challenge.config.weekAnchor}
+								challenge={challenge}
+								asOfDate={activeDate}
 								onSave={handleSave}
 								onSetTrackerGoal={handleSetTrackerGoal}
 							/>
