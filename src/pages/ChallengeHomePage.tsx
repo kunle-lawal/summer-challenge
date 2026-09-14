@@ -470,10 +470,22 @@ export function ChallengeHomePage() {
             </List>
           </Section>
 
-          <Button type="button" $tone="ghost" $block onClick={() => navigate(`/c/${challenge.slug}/rules`)}>
-            <Icon name="rules" />
-            Read the rules
-          </Button>
+          <Section>
+            <Button type="button" $tone="ghost" $block onClick={() => navigate(`/c/${challenge.slug}/rules`)}>
+              <Icon name="rules" />
+              Read the rules
+            </Button>
+            {/*
+              The only other route to /new was the settings screen, which is
+              behind the owner password — and "/" redirects to your most recent
+              challenge, so someone who already had one could never reach it.
+              Starting a challenge isn't an owner action; anyone can do it.
+            */}
+            <Button as={Link} to="/new" $tone="ghost" $block>
+              <Icon name="plus" />
+              Start a new challenge
+            </Button>
+          </Section>
         </Sheet>
       </Body>
     </>

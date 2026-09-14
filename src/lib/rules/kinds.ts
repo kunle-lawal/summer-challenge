@@ -6,7 +6,7 @@
  * and waiver logic.
  */
 
-import type { Rule, BinaryRule, CounterRule, RangeRule, PenaltyRule, TrackerRule } from '../../types';
+import type { Rule, BinaryRule, CounterRule, RangeRule, PenaltyRule, StreakRule, TrackerRule } from '../../types';
 import type { Entry, RawEntryValue } from '../../types';
 import type { DateString } from '../../types';
 
@@ -217,4 +217,52 @@ export function getFreePassState(
     left: Math.max(0, quota - used),
     spentOnDate,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Streak qualifying days
+// ---------------------------------------------------------------------------
+
+/**
+ * The most a rule can award for one day.
+ *
+ * Free passes are included deliberately: spending one is meant to hold a streak
+ * together, which is the whole point of having them.
+ */
+export function maxDailyPoints(rule: Rule): number {
+  switch (rule.kind) {
+    case 'binary':
+      return Math.max(rule.pointsYes, rule.pointsFree);
+    case 'counter':
+      return rule.maxPoints;
+    case 'range':
+      return Math.max(rule.pointsAtMin, rule.pointsAtMax);
+    case 'penalty':
+      return Math.max(rule.pointsClean, rule.pointsFree);
+    case 'tracker':
+      return rule.maxPoints;
+    case 'streak':
+      return rule.bonusPoints;
+  }
+}
+
+/**
+ * Does a day scoring `points` on `watched` count toward `streak`?
+ *
+ * Both the leaderboard (`computeStreakBonuses`) and the log UI
+ * (`getStreakRunAtDate`) answer this question, and they have to answer it the
+ * same way or the pips on the log disagree with the points on the board — so
+ * the rule lives here once.
+ */
+export function qualifiesForStreak(
+  streak: StreakRule,
+  watched: Rule | undefined,
+  points: number,
+): boolean {
+  if (points <= 0) return false;
+  if ((streak.qualifier ?? 'positive') === 'positive') return true;
+  if (!watched) return false;
+  // Counter scoring is a division, so compare with a tolerance rather than
+  // letting 1.9999999 fail to qualify.
+  return points >= maxDailyPoints(watched) - 1e-9;
 }

@@ -120,8 +120,12 @@ export const Button = styled.button<{ $tone?: ButtonTone; $block?: boolean; $sm?
   justify-content: center;
   gap: 8px;
   cursor: pointer;
+  text-decoration: none;
   transition: background 0.16s ${({ theme }) => theme.ease.out}, border-color 0.16s, color 0.16s;
   ${({ $tone = 'ink' }) => buttonTone[$tone]}
+
+  /* Renders as an <a> where it navigates; keep it looking like a button. */
+  &:hover { text-decoration: none; }
 
   svg {
     width: 17px;

@@ -6,7 +6,9 @@ import type { ChallengeConfig, Rule } from '@/types';
 import { createChallenge } from '@/lib/challenges';
 import { addMember } from '@/lib/members';
 import { getCooldownRemainingMs, isOnCooldown } from '@/lib/createCooldown';
-import { classicPreset, minimalPreset } from '@/lib/rules/presets';
+import {
+  CHALLENGE_TEMPLATES, DEFAULT_TEMPLATE_ID, ceilingOf, passSummary, templatesByFocus,
+} from '@/lib/rules/templates';
 import { formatRuleFormula } from '@/lib/rules/ruleDocs';
 import { addDays, todayInTz } from '@/lib/dates';
 import { Body, FootBar, Screen, Sheet, TopBar } from '@/components/layout/Screen';
@@ -16,8 +18,8 @@ import { MemberBadge } from '@/components/ui/MemberBadge';
 import { RuleTile, Tile } from '@/components/ui/Tile';
 import { RuleEditor } from '@/components/admin/RuleEditor';
 import {
-  AddRow, Button, Card, ErrorText, Field, Hint, IconButton, Input, List,
-  Meta, Name, Pill, Row, Segmented, Select, tnum,
+  AddRow, Button, Card, ErrorText, Field, Hint, IconButton, Input, Label, List,
+  Meta, Name, Pill, Row, Select, tnum,
 } from '@/components/ui/primitives';
 
 /**
@@ -67,6 +69,44 @@ const Grid2 = styled.div`
   gap: 10px;
 `;
 
+const TemplateCard = styled.button`
+  width: 100%;
+  text-align: left;
+  border: 1px solid ${({ theme }) => theme.color.hair};
+  border-radius: ${({ theme }) => theme.radii.lg};
+  background: ${({ theme }) => theme.color.surface};
+  padding: 14px;
+  cursor: pointer;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 0.16s ${({ theme }) => theme.ease.out}, border-color 0.16s;
+
+  > .hd {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+
+    b { font-family: ${({ theme }) => theme.font.display}; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  }
+
+  &:hover { background: ${({ theme }) => theme.color.surface2}; border-color: ${({ theme }) => theme.color.hair2}; }
+
+  &[aria-pressed='true'] {
+    border-color: ${({ theme }) => theme.color.ink};
+    background: ${({ theme }) => theme.color.surface};
+    box-shadow: 0 0 0 1px ${({ theme }) => theme.color.ink};
+  }
+`;
+
+const Facts = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+`;
+
 const Done = styled(Sheet)`
   align-items: center;
   text-align: center;
@@ -82,8 +122,6 @@ const LinkCard = styled(Card)`
   gap: 12px;
   text-align: left;
 `;
-
-type Preset = 'classic' | 'minimal' | 'custom';
 
 const TIMEZONES = [
   'America/Chicago', 'America/New_York', 'America/Denver', 'America/Los_Angeles',
@@ -103,15 +141,16 @@ export function CreateChallengePage() {
 
   const tzGuess = useMemo(browserTimezone, []);
   const today = useMemo(() => todayInTz(tzGuess), [tzGuess]);
+  const defaultTemplateWeeks =
+    CHALLENGE_TEMPLATES.find(t => t.id === DEFAULT_TEMPLATE_ID)?.weeks ?? 9;
 
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(addDays(today, 83)); // twelve weeks
+  const [endDate, setEndDate] = useState(() => addDays(today, defaultTemplateWeeks * 7 - 1));
   const [timezone, setTimezone] = useState(tzGuess);
-  const [preset, setPreset] = useState<Preset>('classic');
-  const [rules, setRules] = useState<Rule[]>(() =>
-    classicPreset([nanoid(), nanoid(), nanoid(), nanoid()]),
-  );
+  const defaultTemplate = CHALLENGE_TEMPLATES.find(t => t.id === DEFAULT_TEMPLATE_ID)!;
+  const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
+  const [rules, setRules] = useState<Rule[]>(() => defaultTemplate.build(nanoid));
   const [password, setPassword] = useState('');
   const [names, setNames] = useState<string[]>([]);
   const [nameDraft, setNameDraft] = useState('');
@@ -131,12 +170,18 @@ export function CreateChallengePage() {
     ? Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 604_800_000))
     : null;
 
-  const usePreset = (p: Preset) => {
-    setPreset(p);
-    if (p === 'classic') setRules(classicPreset([nanoid(), nanoid(), nanoid(), nanoid()]));
-    if (p === 'minimal') setRules(minimalPreset(nanoid(), 'Workout'));
-    if (p === 'custom') setRules([]);
+  /** Picking a template sets both its rules and its suggested end date. */
+  const useTemplate = (id: string) => {
+    const template = CHALLENGE_TEMPLATES.find(t => t.id === id);
+    if (!template) return;
+    setTemplateId(id);
+    setRules(template.build(nanoid));
+    setEndDate(addDays(startDate, template.weeks * 7 - 1));
+    setError(null);
   };
+
+  /** Any hand edit means the rules are no longer that template's. */
+  const markCustomised = () => setTemplateId('');
 
   const addName = () => {
     const trimmed = nameDraft.trim();
@@ -311,15 +356,47 @@ export function CreateChallengePage() {
               <span className="n">2</span>
               <div>
                 <h2>Rules</h2>
-                <Meta>Four is a comfortable evening. Six is a project.</Meta>
+                <Meta>Start from a ready-made set, then change anything.</Meta>
               </div>
             </NumHead>
             <Stack>
-              <Segmented role="group" aria-label="Starting rules">
-                <button type="button" aria-pressed={preset === 'classic'} onClick={() => usePreset('classic')}>Classic</button>
-                <button type="button" aria-pressed={preset === 'minimal'} onClick={() => usePreset('minimal')}>Minimal</button>
-                <button type="button" aria-pressed={preset === 'custom'} onClick={() => usePreset('custom')}>Empty</button>
-              </Segmented>
+              {/* Fourteen cards in one list is unreadable at phone width. */}
+              <div role="group" aria-label="Starting rules" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {templatesByFocus().map(group => (
+                  <div key={group.focus} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <Label>{group.focus}</Label>
+                    {group.templates.map(t => {
+                      const chosen = templateId === t.id;
+                      const built = t.build(() => 'x');
+                      const ceiling = Math.round(ceilingOf(built, t.weeks));
+                      const passes = passSummary(built, t.weeks);
+                      return (
+                        <TemplateCard
+                          key={t.id}
+                          type="button"
+                          aria-pressed={chosen}
+                          onClick={() => useTemplate(t.id)}
+                        >
+                          <span className="hd">
+                            <b>{t.name}</b>
+                            <Meta>{t.weeks} weeks</Meta>
+                          </span>
+                          <Meta>{t.tagline}</Meta>
+                          {ceiling > 0 && (
+                            <Facts>
+                              <Pill $tone="flat">{ceiling} pts if perfect</Pill>
+                              {passes && <Pill $tone="flat">{passes}</Pill>}
+                              <Pill $tone="flat">{t.forgiveness}</Pill>
+                            </Facts>
+                          )}
+                          {/* Only the chosen one earns the space for a paragraph. */}
+                          {chosen && <Hint style={{ marginTop: 4 }}>{t.blurb}</Hint>}
+                        </TemplateCard>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
 
               {rules.length === 0 ? (
                 <Hint>No rules yet — add at least one before you can create the challenge.</Hint>
@@ -345,7 +422,7 @@ export function CreateChallengePage() {
                         aria-label={`Remove ${rule.name}`}
                         onClick={() => {
                           setRules(rs => rs.filter(r => r.id !== rule.id));
-                          setPreset('custom');
+                          markCustomised();
                         }}
                       >
                         <Icon name="trash" />
@@ -442,14 +519,14 @@ export function CreateChallengePage() {
           onClose={() => setEditingRule(null)}
           onSave={saved => {
             setRules(rs => (editingRule === 'new' ? [...rs, saved] : rs.map(r => (r.id === saved.id ? saved : r))));
-            setPreset('custom');
+            markCustomised();
             setEditingRule(null);
           }}
           {...(editingRule !== 'new'
             ? {
                 onDelete: () => {
                   setRules(rs => rs.filter(r => r.id !== editingRule.id));
-                  setPreset('custom');
+                  markCustomised();
                   setEditingRule(null);
                 },
               }
