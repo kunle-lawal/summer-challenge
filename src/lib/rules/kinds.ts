@@ -155,3 +155,66 @@ export function countPriorPenaltyInfractionsInWeek(
   }
   return count;
 }
+
+// ---------------------------------------------------------------------------
+// Free-pass availability (for the log UI)
+// ---------------------------------------------------------------------------
+
+/**
+ * What the log screen needs to show and gate a free pass.
+ *
+ * `left` is what a member can still spend. When `excludeDate` is given, a pass
+ * already spent on that date is not counted as used — otherwise re-opening a
+ * day you spent a pass on would show one fewer remaining than you actually
+ * have, and re-picking it would look like it cost you a second pass.
+ */
+export interface FreePassState {
+  /** True when this rule offers free passes at all. */
+  offered: boolean;
+  /** Lifetime quota, or null when none is configured. */
+  quota: number | null;
+  /** Passes spent, ignoring `excludeDate`. */
+  used: number;
+  /** Passes still available. */
+  left: number;
+  /** True when the member is currently spending one on `excludeDate`. */
+  spentOnDate: boolean;
+}
+
+const NO_FREE_PASSES: FreePassState = {
+  offered: false,
+  quota: null,
+  used: 0,
+  left: 0,
+  spentOnDate: false,
+};
+
+export function getFreePassState(
+  rule: Rule,
+  memberEntries: readonly Entry[],
+  excludeDate?: DateString,
+): FreePassState {
+  if (rule.kind !== 'binary' && rule.kind !== 'penalty') return NO_FREE_PASSES;
+
+  const quota = rule.freePasses?.count ?? null;
+  if (quota === null || quota <= 0) return NO_FREE_PASSES;
+
+  let used = 0;
+  let spentOnDate = false;
+  for (const entry of memberEntries) {
+    if (entry.values[rule.id] !== 'free') continue;
+    if (excludeDate !== undefined && entry.date === excludeDate) {
+      spentOnDate = true;
+      continue;
+    }
+    used++;
+  }
+
+  return {
+    offered: true,
+    quota,
+    used,
+    left: Math.max(0, quota - used),
+    spentOnDate,
+  };
+}

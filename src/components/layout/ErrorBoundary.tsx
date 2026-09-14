@@ -1,43 +1,20 @@
 import { Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import styled from 'styled-components';
+import { Body, Screen } from './Screen';
+import { EmptyState } from '@/components/ui/feedback';
 
-const Wrap = styled.div`
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 200px;
-  justify-content: center;
-`;
+interface Props { children: ReactNode }
+interface State { error: Error | null }
 
-const Title = styled.h2`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 22px;
-  color: ${({ theme }) => theme.color.bad};
-`;
-
-const Msg = styled.p`
-  font-size: 13.5px;
-  color: ${({ theme }) => theme.color.ink2};
-  line-height: 1.5;
-`;
-
-const ReloadBtn = styled.button`
-  appearance: none;
-  border: 1px solid ${({ theme }) => theme.color.hair2};
-  background: ${({ theme }) => theme.color.surface};
-  color: ${({ theme }) => theme.color.ink};
-  font: 500 14px/1 ${({ theme }) => theme.font.body};
-  padding: 10px 16px;
-  border-radius: ${({ theme }) => theme.radii.md};
-  cursor: pointer;
-  align-self: flex-start;
-`;
-
-interface Props { children: ReactNode; }
-interface State { error: Error | null; }
-
+/**
+ * Catches a render crash in one route and offers a way out.
+ *
+ * The previous copy here was "Something went wrong" followed by the raw
+ * exception message, which `docs/ui-design-patterns.md` §9 names explicitly as
+ * the thing not to ship: it states neither what happened nor what to do. The
+ * message is still shown, but as supporting detail under a line that says
+ * what's actually broken and what the reader can do about it.
+ */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
 
@@ -45,20 +22,26 @@ export class ErrorBoundary extends Component<Props, State> {
     return { error };
   }
 
-  componentDidCatch(_error: Error, _info: ErrorInfo) {
-    // intentionally not logging to avoid noise in production
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // No reporting endpoint exists, but a crash should never be silent for
+    // whoever is looking at a console.
+    console.error('Screen failed to render:', error, info.componentStack);
   }
 
   render() {
-    if (this.state.error) {
-      return (
-        <Wrap>
-          <Title>Something went wrong</Title>
-          <Msg>{this.state.error.message}</Msg>
-          <ReloadBtn onClick={() => window.location.reload()}>Reload</ReloadBtn>
-        </Wrap>
-      );
-    }
-    return this.props.children;
+    const { error } = this.state;
+    if (!error) return this.props.children;
+
+    return (
+      <Screen>
+        <Body>
+          <EmptyState
+            title="This screen didn’t load"
+            body={`Something in the page failed while drawing it${error.message ? ` — ${error.message}` : ''}. Nothing you logged is affected. Reloading usually clears it.`}
+            action={{ label: 'Reload the page', onClick: () => window.location.reload() }}
+          />
+        </Body>
+      </Screen>
+    );
   }
 }

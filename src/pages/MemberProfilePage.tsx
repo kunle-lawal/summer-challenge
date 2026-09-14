@@ -1,421 +1,350 @@
-import { useParams, useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
+import { useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import styled, { useTheme } from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
-import { buildLeaderboard, buildWeeklySummary } from '@/lib/rules/aggregate';
-import { todayInTz } from '@/lib/dates';
+import { useAdminMode } from '@/context/AdminModeContext';
+import { activeRules } from '@/types';
+import { addDays, getWeekWindow, todayInTz } from '@/lib/dates';
+import { buildLeaderboard, getLoggedDayStreak } from '@/lib/rules/aggregate';
+import { formatPoints } from '@/lib/rules/display';
+import { removeMember, restoreMember } from '@/lib/members';
+import { Body, Sheet, TopBar } from '@/components/layout/Screen';
+import { Bar, Count, Dialog, EmptyState, Ring, Toast } from '@/components/ui/feedback';
+import { Icon } from '@/components/ui/Icons';
 import { MemberBadge } from '@/components/ui/MemberBadge';
-import { ArrowIcon } from '@/components/ui/Icons';
-import type { Entry } from '@/types';
+import { RuleTile } from '@/components/ui/Tile';
+import {
+  Button, Card, IconButton, Label, List, Meta, SectionHead, tnum,
+} from '@/components/ui/primitives';
 
-// ── Styled components ─────────────────────────────────────────────────────────
-
-const PageHeader = styled.header`
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid ${({ theme }) => theme.color.hair};
-`;
-
-const BackBtn = styled.button`
-  width: 36px; height: 36px;
-  border-radius: ${({ theme }) => theme.radii.md};
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  margin-top: 2px;
-  svg { width: 18px; height: 18px; stroke: ${({ theme }) => theme.color.ink}; stroke-width: 1.6; fill: none; }
-`;
-
-const Eyebrow = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-`;
-
-const Title = styled.h1`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 30px;
-  line-height: 0.96;
-  font-weight: 400;
-  margin-top: 2px;
-  em { font-style: italic; }
-`;
-
-const Body = styled.div`
-  padding: 0 16px 24px;
-`;
-
-const HeroCard = styled.div`
-  background: ${({ theme }) => theme.color.surface2};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 16px;
-  margin-top: 14px;
+const HeadCard = styled(Card)`
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+
+  > .tot {
+    flex: 1;
+    min-width: 0;
+
+    b {
+      display: block;
+      font-family: ${({ theme }) => theme.font.display};
+      font-weight: 600;
+      font-size: 26px;
+      line-height: 32px;
+      letter-spacing: -0.02em;
+      ${tnum}
+    }
+  }
 `;
 
-const HeroInfo = styled.div`
-  flex: 1;
-  min-width: 0;
-`;
-
-const HeroName = styled.div`
-  font-weight: 600;
-  font-size: 17px;
-  color: ${({ theme }) => theme.color.ink};
-`;
-
-const HeroMeta = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  color: ${({ theme }) => theme.color.ink3};
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-top: 3px;
-`;
-
-const HeroPts = styled.div`
-  text-align: right;
-`;
-
-const PtsVal = styled.div`
+const RingLabel = styled.span`
   font-family: ${({ theme }) => theme.font.display};
-  font-size: 36px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  color: ${({ theme }) => theme.color.ink};
-  font-style: italic;
-`;
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  ${tnum}
 
-const PtsLabel = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-  margin-top: 2px;
-`;
-
-const StatsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0;
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  border-radius: ${({ theme }) => theme.radii.md};
-  background: ${({ theme }) => theme.color.surface2};
-  margin-top: 14px;
-  overflow: hidden;
-`;
-
-const StatCell = styled.div`
-  padding: 14px;
-  border-right: 1px solid ${({ theme }) => theme.color.hair};
-  &:last-child { border-right: 0; }
-`;
-
-const StatVal = styled.div`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 26px;
-  line-height: 1;
-  color: ${({ theme }) => theme.color.ink};
-  font-variant-numeric: tabular-nums;
-`;
-
-const StatLabel = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-  margin-top: 4px;
-`;
-
-const SectionLbl = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-  font-weight: 500;
-  padding: 18px 0 10px;
-`;
-
-const Card = styled.div`
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 0;
-  overflow: hidden;
+  small { font-size: 10px; color: ${({ theme }) => theme.color.ink2}; }
 `;
 
 const RuleRow = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid ${({ theme }) => theme.color.hair};
-  &:last-child { border-bottom: 0; }
+  min-height: 48px;
+
+  > .nm {
+    flex: 1;
+    min-width: 0;
+
+    > span {
+      display: block;
+      font-weight: 600;
+      font-size: 14px;
+      line-height: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  > .pts {
+    width: 52px;
+    text-align: right;
+    font-weight: 700;
+    font-size: 14px;
+    flex: 0 0 auto;
+    ${tnum}
+  }
 `;
 
-const RuleName = styled.div`
-  font-weight: 600;
-  font-size: 14px;
-  color: ${({ theme }) => theme.color.ink};
+const WeekGrid = styled.div`
+  display: flex;
+  gap: 6px;
 `;
 
-const RuleKind = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10px;
-  color: ${({ theme }) => theme.color.ink3};
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-top: 2px;
-`;
-
-const Bar = styled.div`
+const Day = styled.div<{ $on: boolean; $future: boolean }>`
   flex: 1;
-  height: 4px;
-  background: ${({ theme }) => theme.color.bg2};
-  border-radius: ${({ theme }) => theme.radii.pill};
-  overflow: hidden;
+  min-width: 0;
+  height: 56px;
+  border-radius: ${({ theme }) => theme.radii.sm};
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  background: ${({ theme, $on }) => ($on ? theme.color.ink : theme.color.surface)};
+  border: 1px solid ${({ theme, $on }) => ($on ? theme.color.ink : theme.color.hair)};
+  color: ${({ theme, $on }) => ($on ? theme.color.onInk : theme.color.ink3)};
+  opacity: ${({ $future }) => ($future ? 0.45 : 1)};
+
+  b { font-family: ${({ theme }) => theme.font.display}; font-weight: 600; font-size: 13px; }
 `;
 
-const BarFill = styled.div<{ $pct: number; $negative: boolean }>`
-  height: 100%;
-  width: ${({ $pct }) => Math.abs($pct)}%;
-  background: ${({ theme, $negative }) => $negative ? theme.color.bad : theme.color.ink};
-  border-radius: ${({ theme }) => theme.radii.pill};
-`;
-
-const RulePts = styled.div<{ $negative: boolean }>`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 18px;
-  color: ${({ theme, $negative }) => $negative ? theme.color.bad : theme.color.ink};
-  font-variant-numeric: tabular-nums;
-  min-width: 48px;
-  text-align: right;
-`;
-
-const RecentList = styled.div`
+const Section = styled.section`
   display: flex;
   flex-direction: column;
   gap: 8px;
 `;
 
-const EntryItem = styled.div`
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 12px 14px;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-`;
-
-const EntryDate = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  color: ${({ theme }) => theme.color.ink3};
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-`;
-
-const EntryRulesLine = styled.div`
-  font-size: 13px;
-  color: ${({ theme }) => theme.color.ink2};
-  margin-top: 2px;
-`;
-
-const EntryPts = styled.div`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 22px;
-  color: ${({ theme }) => theme.color.ink};
-  font-variant-numeric: tabular-nums;
-  font-style: italic;
-`;
-
-const YouBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 6px;
-  border-radius: ${({ theme }) => theme.radii.pill};
-  background: ${({ theme }) => theme.color.ink};
-  color: ${({ theme }) => theme.color.surface};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  margin-left: 6px;
-`;
-
-const RankBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  border-radius: ${({ theme }) => theme.radii.pill};
-  background: ${({ theme }) => theme.color.bg2};
-  color: ${({ theme }) => theme.color.ink2};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-`;
-
-const NotFound = styled.div`
-  padding: 40px 24px;
-  text-align: center;
-  color: ${({ theme }) => theme.color.ink3};
-  font-size: 13.5px;
-`;
-
-// ── Component ─────────────────────────────────────────────────────────────────
-
 export function MemberProfilePage() {
-  const { slug, memberId } = useParams<{ slug: string; memberId: string }>();
-  const navigate = useNavigate();
-  const { challenge, members, activeMembers, entries } = useChallenge();
+  const { challenge, members, entries } = useChallenge();
   const { selectedMemberId } = useSelectedMember();
+  const { isAdmin } = useAdminMode();
+  const { memberId } = useParams<{ memberId: string }>();
+  const navigate = useNavigate();
+  const theme = useTheme();
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const data = useMemo(() => {
+    if (!challenge || !memberId) return null;
+    const member = members.find(m => m.id === memberId);
+    if (!member) return null;
+
+    const { timezone, weekAnchor } = challenge.config;
+    const today = todayInTz(timezone);
+    const memberEntries = entries.filter(e => e.memberId === member.id);
+    const board = buildLeaderboard(challenge, members, entries);
+    const standing = board.standings.find(s => s.memberId === member.id) ?? null;
+    const rules = activeRules(challenge.config.rules);
+
+    const week = getWeekWindow(today, weekAnchor);
+    const loggedDates = new Set(memberEntries.map(e => e.date));
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const date = addDays(week.start, i);
+      return {
+        date,
+        letter: new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'narrow', timeZone: 'UTC' }),
+        on: loggedDates.has(date),
+        future: date > today,
+      };
+    });
+
+    const perRule = rules.map(r => ({ rule: r, points: standing?.perRule[r.id] ?? 0 }));
+    const maxAbs = Math.max(1, ...perRule.map(p => Math.abs(p.points)));
+
+    return {
+      member,
+      standing,
+      perRule,
+      maxAbs,
+      days,
+      streak: getLoggedDayStreak(memberEntries, today),
+      hasEntries: memberEntries.length > 0,
+    };
+  }, [challenge, members, entries, memberId]);
 
   if (!challenge) return null;
 
-  const member = members.find(m => m.id === memberId);
-
-  if (!member) {
+  if (!data) {
     return (
-      <NotFound>
-        <p>Member not found.</p>
-        <button onClick={() => navigate(`/c/${slug}/board`)} style={{ marginTop: 12, textDecoration: 'underline', background: 'none', border: 0, cursor: 'pointer', fontSize: 13 }}>
-          Back to leaderboard
-        </button>
-      </NotFound>
+      <Body>
+        <EmptyState
+          title="No such member"
+          body="They may have been removed from this challenge, or the link may be out of date."
+          action={{ label: 'Back to the leaderboard', onClick: () => navigate(`/c/${challenge.slug}/board`) }}
+        />
+      </Body>
     );
   }
 
-  const isYou = memberId === selectedMemberId;
-  const tz = challenge.config.timezone;
-  const today = todayInTz(tz);
+  const { member, standing, perRule, maxAbs, days, streak, hasEntries } = data;
+  const isYou = member.id === selectedMemberId;
 
-  const memberEntries = entries.filter((e: Entry) => e.memberId === memberId);
-  const leaderboard = buildLeaderboard(challenge, activeMembers, entries);
-  const standing = leaderboard.standings.find(s => s.memberId === memberId);
-  const weeklySummary = buildWeeklySummary(challenge, member, memberEntries, today);
-
-  const totalPts = standing?.totalPoints ?? 0;
-  const daysLogged = standing?.daysLogged ?? 0;
-  const rank = standing?.rank ?? null;
-  const avgPerDay = daysLogged > 0 ? totalPts / daysLogged : 0;
-
-  const rules = challenge.config.rules.filter(r => r.kind !== 'streak');
-  const maxRulePts = Math.max(1, ...rules.map(r => Math.abs(standing?.perRule[r.id] ?? 0)));
-
-  const recentEntries = [...memberEntries]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 5);
+  const doRemove = async () => {
+    setBusy(true);
+    const result = await removeMember(challenge.id, member.id, { memberId: selectedMemberId, isOwner: true });
+    setBusy(false);
+    setConfirmRemove(false);
+    if (!result.ok) {
+      setToast({ msg: 'Couldn’t remove them. Check your connection and try again.' });
+      return;
+    }
+    setToast({
+      msg: `${member.name} removed`,
+      undo: async () => {
+        setToast(null);
+        const back = await restoreMember(challenge.id, member.id, { memberId: selectedMemberId, isOwner: true });
+        setToast({
+          msg: back.ok
+            ? `${member.name} is back`
+            : back.reason === 'name_taken'
+              ? `Someone else is using that name now. Re-add them as “${back.suggested}”.`
+              : 'Couldn’t undo that.',
+        });
+      },
+    });
+  };
 
   return (
     <>
-      <PageHeader>
-        <BackBtn onClick={() => navigate(-1)} aria-label="Back">
-          <ArrowIcon />
-        </BackBtn>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Eyebrow>Member</Eyebrow>
-          <Title>{member.name.split(' ')[0]}<em>'s profile</em></Title>
-        </div>
-      </PageHeader>
-
       <Body>
-        <HeroCard>
-          <MemberBadge member={member} size="xl" isYou={isYou} />
-          <HeroInfo>
-            <HeroName>
-              {member.name}
-              {isYou && <YouBadge>you</YouBadge>}
-            </HeroName>
-            <HeroMeta>
-              {rank !== null ? `Rank ${rank}` : 'Unranked'} · {daysLogged} days logged
-            </HeroMeta>
-            {rank !== null && (
-              <RankBadge style={{ marginTop: 6 }}>#{rank} of {activeMembers.length}</RankBadge>
-            )}
-          </HeroInfo>
-          <HeroPts>
-            <PtsVal>{totalPts.toFixed(1)}</PtsVal>
-            <PtsLabel>Total pts</PtsLabel>
-          </HeroPts>
-        </HeroCard>
+        <TopBar
+          center
+          title={isYou ? 'You' : member.name}
+          sub={`${standing?.daysLogged ?? 0} ${standing?.daysLogged === 1 ? 'day' : 'days'} logged${member.active ? '' : ' · removed'}`}
+          left={
+            <IconButton type="button" aria-label="Back" onClick={() => navigate(-1)}>
+              <Icon name="back" />
+            </IconButton>
+          }
+          right={
+            isAdmin && !isYou ? (
+              <IconButton type="button" aria-label={`Actions for ${member.name}`} onClick={() => setMenuOpen(true)}>
+                <Icon name="more" />
+              </IconButton>
+            ) : undefined
+          }
+        />
 
-        <StatsGrid>
-          <StatCell>
-            <StatVal>{daysLogged}</StatVal>
-            <StatLabel>Days</StatLabel>
-          </StatCell>
-          <StatCell>
-            <StatVal>{avgPerDay.toFixed(1)}</StatVal>
-            <StatLabel>Per day</StatLabel>
-          </StatCell>
-          <StatCell>
-            <StatVal>Wk {weeklySummary.weekNumber}</StatVal>
-            <StatLabel>Current</StatLabel>
-          </StatCell>
-        </StatsGrid>
+        <Sheet>
+          <HeadCard $tint>
+            <MemberBadge member={member} size="xl" isYou={isYou} />
+            <div className="tot">
+              <b><Count value={standing?.totalPoints ?? 0} decimals={1} /></b>
+              <Label>Points</Label>
+            </div>
+            <Ring value={Math.min(streak, 7)} max={7} size={58} stroke={6} track={theme.color.hair3} color={theme.color.accent}>
+              <RingLabel>
+                {streak}<small>/7</small>
+              </RingLabel>
+            </Ring>
+          </HeadCard>
 
-        <SectionLbl>Per rule breakdown</SectionLbl>
-        <Card>
-          {rules.map(r => {
-            const pts = standing?.perRule[r.id] ?? 0;
-            const pct = maxRulePts > 0 ? (pts / maxRulePts) * 100 : 0;
-            return (
-              <RuleRow key={r.id}>
-                <div style={{ minWidth: 0, flex: '0 0 96px' }}>
-                  <RuleName>{r.emoji ? `${r.emoji} ${r.name}` : r.name}</RuleName>
-                  <RuleKind>{r.kind}</RuleKind>
-                </div>
-                <Bar>
-                  <BarFill $pct={pct} $negative={pts < 0} />
-                </Bar>
-                <RulePts $negative={pts < 0}>
-                  {pts > 0 ? '+' : ''}{pts.toFixed(1)}
-                </RulePts>
-              </RuleRow>
-            );
-          })}
-        </Card>
+          {!hasEntries ? (
+            <EmptyState
+              title={isYou ? 'You haven’t logged anything yet' : `${member.name} hasn’t logged anything yet`}
+              body={
+                isYou
+                  ? 'Log a day and your points will start showing up here, broken down by rule.'
+                  : 'Once they log a day, their breakdown shows up here.'
+              }
+              {...(isYou ? { action: { label: 'Log today', onClick: () => navigate(`/c/${challenge.slug}/log`) } } : {})}
+            />
+          ) : (
+            <>
+              <Section>
+                <SectionHead>
+                  <h2>Where the points came from</h2>
+                </SectionHead>
+                <List $gap={4}>
+                  {perRule.map(({ rule, points }) => (
+                    <RuleRow key={rule.id}>
+                      <RuleTile rule={rule} />
+                      <span className="nm">
+                        <span>{rule.name}</span>
+                        <Bar
+                          value={Math.abs(points)}
+                          max={maxAbs}
+                          color={points < 0 ? theme.color.bad : theme.color.ink}
+                        />
+                      </span>
+                      <span className="pts">{formatPoints(points)}</span>
+                    </RuleRow>
+                  ))}
+                </List>
+              </Section>
 
-        <SectionLbl>Recent entries</SectionLbl>
-        {recentEntries.length === 0 ? (
-          <div style={{ color: 'var(--ink-3)', fontSize: 13.5, padding: '8px 0' }}>No entries yet.</div>
-        ) : (
-          <RecentList>
-            {recentEntries.map(e => {
-              const ruleIds = Object.keys(e.values);
-              const ruleNames = ruleIds
-                .map(id => rules.find(r => r.id === id)?.name)
-                .filter(Boolean)
-                .slice(0, 3)
-                .join(', ');
-              return (
-                <EntryItem key={e.id}>
-                  <div>
-                    <EntryDate>{e.date}</EntryDate>
-                    <EntryRulesLine>{ruleNames || 'Logged'}{ruleIds.length > 3 ? ` +${ruleIds.length - 3} more` : ''}</EntryRulesLine>
-                  </div>
-                  <EntryPts>—</EntryPts>
-                </EntryItem>
-              );
-            })}
-          </RecentList>
-        )}
+              <Section>
+                <SectionHead>
+                  <h2>This week</h2>
+                  <Meta>{days.filter(d => d.on).length} of 7 logged</Meta>
+                </SectionHead>
+                <WeekGrid>
+                  {days.map(d => (
+                    <Day key={d.date} $on={d.on} $future={d.future}>
+                      <b>{d.letter}</b>
+                      {d.on ? <Icon name="check" style={{ width: 12, height: 12 }} /> : '—'}
+                    </Day>
+                  ))}
+                </WeekGrid>
+              </Section>
+            </>
+          )}
+        </Sheet>
       </Body>
+
+      {menuOpen && (
+        <Dialog
+          title={member.name}
+          onClose={() => setMenuOpen(false)}
+          actions={
+            <>
+              <Button type="button" $tone="ghost" onClick={() => setMenuOpen(false)}>
+                Close
+              </Button>
+              <Button
+                type="button"
+                $tone="danger"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setConfirmRemove(true);
+                }}
+              >
+                Remove
+              </Button>
+            </>
+          }
+        >
+          <p>
+            Removing {member.name} keeps every day they logged in history, but takes them off the
+            leaderboard and out of the member picker.
+          </p>
+        </Dialog>
+      )}
+
+      {confirmRemove && (
+        <Dialog
+          title={`Remove ${member.name}?`}
+          onClose={() => setConfirmRemove(false)}
+          actions={
+            <>
+              <Button type="button" $tone="ghost" onClick={() => setConfirmRemove(false)}>
+                Keep them
+              </Button>
+              <Button type="button" $tone="danger" disabled={busy} onClick={doRemove}>
+                {busy ? 'Removing…' : 'Remove'}
+              </Button>
+            </>
+          }
+        >
+          <p>They drop off the leaderboard straight away. You can undo this right afterwards.</p>
+        </Dialog>
+      )}
+
+      {toast && (
+        <Toast actionLabel={toast.undo ? 'Undo' : undefined} onAction={toast.undo}>
+          {toast.msg}
+        </Toast>
+      )}
     </>
   );
 }

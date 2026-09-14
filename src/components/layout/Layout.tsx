@@ -1,46 +1,20 @@
 import { Outlet } from 'react-router-dom';
-import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
+import { Screen } from './Screen';
 import { BottomNav } from './BottomNav';
-import { TopBar } from './TopBar';
 
-const Page = styled.div`
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: ${({ theme }) => theme.color.surface};
-  position: relative;
-
-  @media (min-width: 768px) {
-    margin-left: 200px;
-  }
-`;
-
-const Main = styled.main`
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* Space for fixed bottom nav + safe area on mobile */
-  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-
-  @media (min-width: 768px) {
-    padding-bottom: 24px;
-  }
-`;
-
+/**
+ * Chrome shell: a scrolling screen with the tab bar pinned beneath it.
+ *
+ * There is no desktop sidebar. The design specifies a single 390px layout, so
+ * `Screen` caps and centres the column rather than inventing a wide variant.
+ */
 export function Layout() {
   const { challenge } = useChallenge();
   return (
-    <>
-      {challenge && <TopBar slug={challenge.slug} challengeName={challenge.name} />}
-      <Page>
-        <Main>
-          <Outlet />
-        </Main>
-        {challenge && <BottomNav slug={challenge.slug} />}
-      </Page>
-    </>
+    <Screen>
+      <Outlet />
+      {challenge && <BottomNav slug={challenge.slug} />}
+    </Screen>
   );
 }

@@ -397,3 +397,77 @@ describe('buildWeeklySummary', () => {
     expect(summary.freePassUsage['gym']?.cap).toBe(5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Date-range scoping ("this week" on the leaderboard)
+// ---------------------------------------------------------------------------
+
+describe('aggregateMember — date range', () => {
+  const gym = {
+    id: 'gym', kind: 'binary' as const, name: 'Gym', order: 0,
+    pointsYes: 1, pointsNo: 0, pointsFree: 1,
+    weeklyCap: { maxScoringDays: 2 },
+  };
+  const challenge = makeChallenge({ rules: [gym], weekAnchor: '2024-06-01' });
+  const member = makeMember('m1', 'Kunle');
+
+  it('counts every day when no range is given', () => {
+    const entries = [
+      makeEntry('e1', 'm1', '2024-06-03', { gym: 'yes' }),
+      makeEntry('e2', 'm1', '2024-06-10', { gym: 'yes' }),
+    ];
+    expect(aggregateMember(challenge, member, entries).totalPoints).toBe(2);
+  });
+
+  it('counts only days inside the range', () => {
+    const entries = [
+      makeEntry('e1', 'm1', '2024-06-03', { gym: 'yes' }),
+      makeEntry('e2', 'm1', '2024-06-10', { gym: 'yes' }),
+    ];
+    const scoped = aggregateMember(challenge, member, entries, { start: '2024-06-08', end: '2024-06-14' });
+    expect(scoped.totalPoints).toBe(1);
+  });
+
+  it('reports days logged within the range, not overall', () => {
+    const entries = [
+      makeEntry('e1', 'm1', '2024-06-03', { gym: 'yes' }),
+      makeEntry('e2', 'm1', '2024-06-10', { gym: 'yes' }),
+      makeEntry('e3', 'm1', '2024-06-11', { gym: 'yes' }),
+    ];
+    const scoped = aggregateMember(challenge, member, entries, { start: '2024-06-08', end: '2024-06-14' });
+    expect(scoped.daysLogged).toBe(2);
+  });
+
+  /*
+   * The reason the range is applied when totting up rather than by filtering
+   * the entries first: the cap is a property of the whole week's history. Days
+   * three and four here score nothing because the first two used the cap, and
+   * that has to stay true however the leaderboard is sliced.
+   */
+  it('keeps weekly caps honest across a range boundary', () => {
+    const entries = [
+      makeEntry('e1', 'm1', '2024-06-08', { gym: 'yes' }),
+      makeEntry('e2', 'm1', '2024-06-09', { gym: 'yes' }),
+      makeEntry('e3', 'm1', '2024-06-10', { gym: 'yes' }),
+    ];
+    const all = aggregateMember(challenge, member, entries);
+    expect(all.totalPoints).toBe(2); // third day is capped
+
+    // Asking only about 06-10 must still see it as capped by the two before it.
+    const justThatDay = aggregateMember(challenge, member, entries, { start: '2024-06-10', end: '2024-06-10' });
+    expect(justThatDay.totalPoints).toBe(0);
+  });
+
+  it('ranks a scoped leaderboard by scoped points', () => {
+    const members = [makeMember('m1', 'Kunle'), makeMember('m2', 'Ella')];
+    const entries = [
+      makeEntry('e1', 'm1', '2024-06-03', { gym: 'yes' }),
+      makeEntry('e2', 'm1', '2024-06-04', { gym: 'yes' }),
+      makeEntry('e3', 'm2', '2024-06-10', { gym: 'yes' }),
+    ];
+    const week2 = buildLeaderboard(challenge, members, entries, { start: '2024-06-08', end: '2024-06-14' });
+    expect(week2.standings[0]?.memberName).toBe('Ella');
+    expect(week2.standings[0]?.totalPoints).toBe(1);
+    expect(week2.standings[1]?.totalPoints).toBe(0);
+  });
+});

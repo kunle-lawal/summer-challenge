@@ -230,3 +230,187 @@ export function formatTrackerMemberMeta(
     rule.decimals === 0 ? String(Math.round(n)) : n.toFixed(rule.decimals);
   return `${resolved.label} · ${fmt(resolved.startVal)}→${fmt(resolved.goalVal)} ${resolved.unit}`;
 }
+
+// ---------------------------------------------------------------------------
+// Plain-language explanation of one configured rule
+// ---------------------------------------------------------------------------
+
+/**
+ * What a rule actually does, in this challenge, with its real numbers.
+ *
+ * `RULE_KIND_INFO.description` explains a *kind* to an owner who's building a
+ * rule. This explains a *rule* to the person logging against it, which is a
+ * different sentence — "10,000 steps is the full +5" rather than "a number
+ * logged each day".
+ *
+ * Composed by filtering and joining so a rule without a cap or free passes
+ * never leaves a dangling clause (§6).
+ */
+export function explainRule(rule: Rule, allRules: readonly Rule[] = []): string {
+  const pts = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`;
+  const parts: string[] = [];
+
+  switch (rule.kind) {
+    case 'binary': {
+      parts.push(`Each yes is worth ${pts(rule.pointsYes)}.`);
+      if (rule.pointsNo !== 0) parts.push(`A no is ${pts(rule.pointsNo)}.`);
+      if (rule.weeklyCap) {
+        parts.push(
+          `Only the first ${rule.weeklyCap.maxScoringDays} yes ${rule.weeklyCap.maxScoringDays === 1 ? 'day' : 'days'} each week score — extra days still count as done, they just don't add points.`,
+        );
+      }
+      if (rule.freePasses?.count) {
+        parts.push(
+          `You get ${rule.freePasses.count} free ${rule.freePasses.count === 1 ? 'pass' : 'passes'} for the whole challenge; each one scores like a yes.`,
+        );
+      }
+      break;
+    }
+    case 'counter': {
+      parts.push(
+        `Points scale with the count: ${rule.target.toLocaleString()} ${rule.unit} earns the full ${pts(rule.maxPoints)}, and half that earns half the points.`,
+      );
+      parts.push(`Going past the target doesn't add more.`);
+      break;
+    }
+    case 'range': {
+      const { atMin, atMax } = resolveRangePoints(rule);
+      parts.push(
+        atMin === atMax
+          ? `Anything from ${rule.min} to ${rule.max} ${rule.unit} scores ${pts(atMin)}.`
+          : `Inside ${rule.min}–${rule.max} ${rule.unit} points scale from ${pts(atMin)} at the low end to ${pts(atMax)} at the high end.`,
+      );
+      parts.push(
+        rule.pointsOutside === 0
+          ? 'Outside that range scores nothing — it is never a penalty.'
+          : `Outside that range scores ${pts(rule.pointsOutside)}.`,
+      );
+      break;
+    }
+    case 'penalty': {
+      if (rule.pointsClean !== 0) parts.push(`A clean day is worth ${pts(rule.pointsClean)}.`);
+      parts.push(`Each slip costs ${Math.abs(rule.pointsPerInfraction)}.`);
+      if (rule.weeklyFirstWaived) {
+        parts.push('The first slip each week is waived automatically, so one bad night costs nothing.');
+      }
+      if (rule.freePasses?.count) {
+        parts.push(`You have ${rule.freePasses.count} free ${rule.freePasses.count === 1 ? 'pass' : 'passes'} that skip the penalty entirely.`);
+      }
+      break;
+    }
+    case 'streak': {
+      const tracked = allRules.find(r => r.id === rule.ruleRef);
+      parts.push(
+        `${rule.daysRequired} days in a row on ${tracked ? tracked.name : 'the tracked rule'} pays ${pts(rule.bonusPoints)}.`,
+      );
+      parts.push(
+        rule.repeatable
+          ? `The run then restarts, so it can pay again every ${rule.daysRequired} days.`
+          : 'It pays once per challenge.',
+      );
+      parts.push('A day that scores nothing breaks the run.');
+      break;
+    }
+    case 'tracker': {
+      parts.push(
+        `Progress from your starting number toward your goal is worth up to ${pts(rule.maxPoints)} across the whole challenge.`,
+      );
+      parts.push('Only your most recent reading counts, so log it whenever you measure.');
+      break;
+    }
+  }
+
+  return parts.filter(Boolean).join(' ');
+}
+
+
+// ---------------------------------------------------------------------------
+// Blank rule per kind
+// ---------------------------------------------------------------------------
+
+/**
+ * A blank rule of the given kind, with sensible starting numbers.
+ *
+ * Lives here rather than in the editor because both the rule editor and the
+ * create flow need it.
+ */
+export function defaultForKind(kind: RuleKind, id: string, order: number): Rule {
+	switch (kind) {
+		case "binary":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				pointsYes: 1,
+				pointsNo: 0,
+				pointsFree: 1,
+				freePasses: null,
+				weeklyCap: null,
+			};
+		case "counter":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				target: 10000,
+				maxPoints: 5,
+				unit: "units",
+				decimals: 0,
+			};
+		case "range":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				min: 5,
+				max: 8,
+				pointsAtMin: 1,
+				pointsAtMax: 4,
+				pointsOutside: 0,
+				unit: "units",
+				decimals: 1,
+			};
+		case "penalty":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				pointsClean: 1,
+				pointsPerInfraction: -1,
+				pointsFree: 1,
+				weeklyFirstWaived: true,
+				freePasses: null,
+			};
+		case "streak":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				ruleRef: "",
+				daysRequired: 7,
+				bonusPoints: 5,
+				repeatable: true,
+			};
+		case "tracker":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				maxPoints: 30,
+				unit: "units",
+				decimals: 1,
+			};
+	}
+}

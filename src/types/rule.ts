@@ -41,6 +41,13 @@ interface BaseRule {
   emoji?: string;
   /** Display order on the Log screen and rule list. Lower = first. */
   order: number;
+  /**
+   * False retires the rule: it disappears from the log and from Today, so no
+   * new values can be entered for it. Values already logged keep scoring —
+   * turning a rule off is not a way to erase history. Absent = active, so
+   * rules written before this field existed stay on.
+   */
+  active?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,3 +252,15 @@ export const isTrackerRule = (r: Rule): r is TrackerRule => r.kind === 'tracker'
  * and never have a stored value — every other kind does.
  */
 export const ruleAcceptsEntryValue = (r: Rule): boolean => r.kind !== 'streak';
+
+/**
+ * True unless the rule has been explicitly retired. Scoring deliberately does
+ * NOT consult this — an inactive rule stops accepting new values, it does not
+ * retroactively void the ones already logged.
+ */
+export const isRuleActive = (r: Pick<Rule, 'active'>): boolean => r.active !== false;
+
+/** Active rules in display order. The list every log and summary screen wants. */
+export function activeRules(rules: readonly Rule[]): Rule[] {
+  return rules.filter(isRuleActive).sort((a, b) => a.order - b.order);
+}

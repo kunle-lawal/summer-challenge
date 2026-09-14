@@ -1,521 +1,500 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
 import { nanoid } from 'nanoid';
-import { createChallenge } from '@/lib/challenges';
-import { classicPreset, minimalPreset } from '@/lib/rules/presets';
-import { addMember } from '@/lib/members';
-import { RuleEditor } from '@/components/admin/RuleEditor';
-import { ArrowIcon, PlusIcon, XIcon, ChevRightIcon } from '@/components/ui/Icons';
-import { MemberBadge, memberTone } from '@/components/ui/MemberBadge';
-import { formatRuleFormula, RULE_KIND_INFO } from '@/lib/rules/ruleDocs';
+import styled from 'styled-components';
 import type { ChallengeConfig, Rule } from '@/types';
+import { createChallenge } from '@/lib/challenges';
+import { addMember } from '@/lib/members';
+import { getCooldownRemainingMs, isOnCooldown } from '@/lib/createCooldown';
+import { classicPreset, minimalPreset } from '@/lib/rules/presets';
+import { formatRuleFormula } from '@/lib/rules/ruleDocs';
+import { addDays, todayInTz } from '@/lib/dates';
+import { Body, FootBar, Screen, Sheet, TopBar } from '@/components/layout/Screen';
+import { Dialog, Mark } from '@/components/ui/feedback';
+import { Icon } from '@/components/ui/Icons';
+import { MemberBadge } from '@/components/ui/MemberBadge';
+import { RuleTile, Tile } from '@/components/ui/Tile';
+import { RuleEditor } from '@/components/admin/RuleEditor';
+import {
+  AddRow, Button, Card, ErrorText, Field, Hint, IconButton, Input, List,
+  Meta, Name, Pill, Row, Segmented, Select, tnum,
+} from '@/components/ui/primitives';
 
-// ── Styled primitives ─────────────────────────────────────────────────────────
+/**
+ * Setting up a new challenge: one scrolling form, three numbered sections.
+ *
+ * The prototype's third step invites people by toggling names from a global
+ * roster. There is no global roster — members exist only inside one challenge —
+ * so names are typed here instead, and the challenge link is what gets shared.
+ */
 
-const Sheet = styled.div`
-  height: 100%;
-  background: ${({ theme }) => theme.color.bg};
-  display: flex;
-  flex-direction: column;
-`;
-
-const Header = styled.header`
+const NumHead = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid ${({ theme }) => theme.color.hair};
-  background: ${({ theme }) => theme.color.bg};
-  position: sticky;
-  top: 0;
-  z-index: 10;
+
+  > .n {
+    width: 26px;
+    height: 26px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: ${({ theme }) => theme.font.display};
+    font-weight: 600;
+    font-size: 13px;
+    background: ${({ theme }) => theme.color.ink};
+    color: ${({ theme }) => theme.color.onInk};
+    ${tnum}
+  }
 `;
 
-const Eyebrow = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-`;
-
-const H2 = styled.h2`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 22px;
-  font-weight: 400;
-  color: ${({ theme }) => theme.color.ink};
-`;
-
-const Body = styled.div`
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0 16px 120px;
-  -webkit-overflow-scrolling: touch;
-`;
-
-const Step = styled.section`
-  padding: 22px 0 8px;
-  border-bottom: 1px solid ${({ theme }) => theme.color.hair};
-  &:last-child { border-bottom: 0; }
-`;
-
-const StepHeader = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
-`;
-
-const StepNum = styled.span`
-  width: 24px; height: 24px;
-  border-radius: 50%;
-  background: ${({ theme }) => theme.color.ink};
-  color: ${({ theme }) => theme.color.surface};
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 13px;
-  font-style: italic;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-`;
-
-const H3 = styled.h3`
-  font-family: ${({ theme }) => theme.font.body};
-  font-size: 15px;
-  font-weight: 600;
-  color: ${({ theme }) => theme.color.ink};
-`;
-
-const Field = styled.div`
+const Section = styled.section`
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 14px;
 `;
 
-const Label = styled.label`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-  font-weight: 500;
-`;
-
-const Input = styled.input`
-  border: 1px solid ${({ theme }) => theme.color.hair2};
-  background: ${({ theme }) => theme.color.surface};
-  font: 400 15px/1.3 ${({ theme }) => theme.font.body};
-  color: ${({ theme }) => theme.color.ink};
-  padding: 11px 12px;
-  border-radius: ${({ theme }) => theme.radii.md};
-  outline: none;
-  width: 100%;
-  &:focus { border-color: ${({ theme }) => theme.color.ink}; }
-`;
-
-const Row = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
-
-const Col = styled.div`
+const Stack = styled.div`
   display: flex;
   flex-direction: column;
+  gap: 12px;
+`;
+
+const Grid2 = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
 `;
 
-const BtnRow = styled.div`
-  display: flex;
-  gap: 6px;
-  margin-bottom: 14px;
-`;
-
-const Btn = styled.button<{ $active?: boolean; $variant?: 'ghost' | 'k' | 'accent' }>`
-  appearance: none;
-  border: 1px solid ${({ theme, $active }) => $active ? theme.color.ink : theme.color.hair2};
-  background: ${({ theme, $active, $variant }) => {
-    if ($active || $variant === 'k') return theme.color.ink;
-    if ($variant === 'accent') return theme.color.accent;
-    if ($variant === 'ghost') return 'transparent';
-    return theme.color.surface;
-  }};
-  color: ${({ theme, $active, $variant }) => {
-    if ($active || $variant === 'k') return theme.color.surface;
-    if ($variant === 'accent') return theme.color.accentInk;
-    return theme.color.ink;
-  }};
-  font: 500 14px/1 ${({ theme }) => theme.font.body};
-  padding: 10px 14px;
-  border-radius: ${({ theme }) => theme.radii.md};
-  cursor: pointer;
-  flex: 1;
-  transition: opacity 0.08s;
-  &:disabled { opacity: 0.45; cursor: not-allowed; }
-`;
-
-const LgBtn = styled(Btn)`
-  padding: 16px 18px;
-  font-size: 15px;
-  width: 100%;
-`;
-
-const IconBtn = styled.button`
-  width: 36px; height: 36px;
-  border-radius: ${({ theme }) => theme.radii.md};
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  display: inline-flex;
+const Done = styled(Sheet)`
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: ${({ theme }) => theme.color.ink};
-  svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.6; fill: none; }
-`;
-
-const SmIconBtn = styled(IconBtn)`
-  width: 28px; height: 28px;
-  svg { width: 12px; height: 12px; }
-`;
-
-const RuleRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 12px 14px;
-  svg { width: 14px; height: 14px; stroke: ${({ theme }) => theme.color.ink3}; stroke-width: 1.6; fill: none; flex-shrink: 0; }
-`;
-
-const MemberRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 12px 14px;
-`;
-
-const GhostInput = styled.input`
-  flex: 1;
-  border: 0;
-  background: transparent;
-  outline: none;
-  font: 400 14.5px/1 ${({ theme }) => theme.font.body};
-  color: ${({ theme }) => theme.color.ink};
-  &::placeholder { color: ${({ theme }) => theme.color.ink3}; }
-`;
-
-const DashedBtn = styled(Btn)`
-  border-style: dashed;
-  color: ${({ theme }) => theme.color.ink2};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; }
-`;
-
-const HintText = styled.p`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 11px;
-  color: ${({ theme }) => theme.color.ink3};
   text-align: center;
-  margin-top: 10px;
-  line-height: 1.5;
-  font-style: italic;
+  justify-content: center;
+  gap: 20px;
+  color: ${({ theme }) => theme.color.accent};
 `;
 
-const Footer = styled.div`
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 12px 16px 28px;
-  border-top: 1px solid ${({ theme }) => theme.color.hair};
-  background: ${({ theme }) => theme.color.surface};
+const LinkCard = styled(Card)`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
 `;
-
-const ErrMsg = styled.p`
-  font-size: 13px;
-  color: ${({ theme }) => theme.color.bad};
-  margin-top: 8px;
-`;
-
-
-const SectionLbl = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-  padding: 14px 0 6px;
-`;
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 type Preset = 'classic' | 'minimal' | 'custom';
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
+const TIMEZONES = [
+  'America/Chicago', 'America/New_York', 'America/Denver', 'America/Los_Angeles',
+  'Europe/London', 'Europe/Berlin', 'Africa/Lagos', 'Asia/Tokyo', 'Australia/Sydney',
+];
 
-function ninetyDaysStr() {
-  const d = new Date();
-  d.setDate(d.getDate() + 90);
-  return d.toISOString().slice(0, 10);
+function browserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
+  } catch {
+    return 'America/Chicago';
+  }
 }
 
 export function CreateChallengePage() {
   const navigate = useNavigate();
 
-  const [name, setName] = useState('Summer Challenge');
-  const [startDate, setStartDate] = useState(todayStr());
-  const [endDate, setEndDate] = useState(ninetyDaysStr());
-  const [timezone, setTimezone] = useState(
-    Intl.DateTimeFormat().resolvedOptions().timeZone,
-  );
-  const [preset, setPreset] = useState<Preset>('classic');
-  const [rules, setRules] = useState<Rule[]>(() => classicPreset([nanoid(), nanoid(), nanoid(), nanoid()]));
-  const [editingRule, setEditingRule] = useState<Rule | null | 'new'>(null);
-  const [password, setPassword] = useState('');
-  const [memberNames, setMemberNames] = useState<string[]>([]);
-  const [newMember, setNewMember] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const tzGuess = useMemo(browserTimezone, []);
+  const today = useMemo(() => todayInTz(tzGuess), [tzGuess]);
 
-  function handlePresetChange(p: Preset) {
+  const [name, setName] = useState('');
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(addDays(today, 83)); // twelve weeks
+  const [timezone, setTimezone] = useState(tzGuess);
+  const [preset, setPreset] = useState<Preset>('classic');
+  const [rules, setRules] = useState<Rule[]>(() =>
+    classicPreset([nanoid(), nanoid(), nanoid(), nanoid()]),
+  );
+  const [password, setPassword] = useState('');
+  const [names, setNames] = useState<string[]>([]);
+  const [nameDraft, setNameDraft] = useState('');
+  const [addingMember, setAddingMember] = useState(false);
+  const [editingRule, setEditingRule] = useState<Rule | 'new' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ slug: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const nameOk = name.trim().length >= 3;
+  const passwordOk = password.trim().length >= 4;
+  const datesOk = !endDate || endDate >= startDate;
+  const ready = nameOk && passwordOk && rules.length > 0 && datesOk;
+
+  const weeks = endDate
+    ? Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 604_800_000))
+    : null;
+
+  const usePreset = (p: Preset) => {
     setPreset(p);
     if (p === 'classic') setRules(classicPreset([nanoid(), nanoid(), nanoid(), nanoid()]));
-    else if (p === 'minimal') setRules(minimalPreset(nanoid(), 'Daily Action', '✅'));
-    else setRules([]);
-  }
-
-  function handleRuleSave(saved: Rule) {
-    setRules(prev => {
-      const idx = prev.findIndex(r => r.id === saved.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = saved;
-        return next;
-      }
-      return [...prev, { ...saved, order: prev.length }];
-    });
-    setEditingRule(null);
-  }
-
-  function handleRuleDelete(id: string) {
-    setRules(prev => prev.filter(r => r.id !== id).map((r, i) => ({ ...r, order: i })));
-    setEditingRule(null);
-  }
-
-  const addMemberLocal = () => {
-    const trimmed = newMember.trim();
-    if (!trimmed) return;
-    if (memberNames.some(n => n.toLowerCase() === trimmed.toLowerCase())) return;
-    setMemberNames(prev => [...prev, trimmed]);
-    setNewMember('');
+    if (p === 'minimal') setRules(minimalPreset(nanoid(), 'Workout'));
+    if (p === 'custom') setRules([]);
   };
 
-  const handleSubmit = async () => {
-    if (!name.trim()) { setError('Challenge name is required.'); return; }
-    if (!password.trim()) { setError('Owner password is required.'); return; }
-    if (!startDate) { setError('Start date is required.'); return; }
+  const addName = () => {
+    const trimmed = nameDraft.trim();
+    if (trimmed.length < 2) return;
+    if (names.some(n => n.toLowerCase() === trimmed.toLowerCase())) {
+      setError(`${trimmed} is already on the list.`);
+      return;
+    }
+    setNames(n => [...n, trimmed]);
+    setNameDraft('');
+    setAddingMember(false);
+    setError(null);
+  };
 
-    setSubmitting(true);
+  const submit = async () => {
+    if (!ready) return;
+    if (isOnCooldown()) {
+      const mins = Math.ceil(getCooldownRemainingMs() / 60_000);
+      setError(`You've just made a challenge. You can make another in about ${mins} minute${mins === 1 ? '' : 's'}.`);
+      return;
+    }
+
+    setBusy(true);
     setError(null);
 
-    try {
-      const config: ChallengeConfig = {
-        startDate,
-        endDate: endDate || null,
-        weekAnchor: startDate,
-        timezone,
-        rules,
-      };
+    const config: ChallengeConfig = {
+      startDate,
+      endDate: endDate || null,
+      weekAnchor: startDate,
+      timezone,
+      rules: rules.map((r, i) => ({ ...r, order: i })),
+    };
 
-      const result = await createChallenge({ name: name.trim(), password, config });
-
-      if (!result.ok) {
-        if (result.reason === 'cooldown') {
-          const mins = Math.ceil(result.remainingMs / 60000);
-          setError(`Please wait ${mins} more minute${mins !== 1 ? 's' : ''} before creating another challenge.`);
-        } else {
-          setError('Could not generate a unique URL. Please try again.');
-        }
-        setSubmitting(false);
-        return;
-      }
-
-      // Add members
-      const actor = { memberId: null, isOwner: true };
-      for (const mName of memberNames) {
-        await addMember(result.challengeId, mName, actor);
-      }
-
-      navigate(`/c/${result.slug}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
-      setSubmitting(false);
+    const result = await createChallenge({ name: name.trim(), password: password.trim(), config });
+    if (!result.ok) {
+      setBusy(false);
+      setError(
+        result.reason === 'cooldown'
+          ? `You've just made a challenge. You can make another in about ${Math.ceil(result.remainingMs / 60_000)} minutes.`
+          : 'Couldn’t create the challenge. Check your connection and try again.',
+      );
+      return;
     }
+
+    for (const memberName of names) {
+      await addMember(result.challengeId, memberName, { memberId: null, isOwner: true });
+    }
+
+    setBusy(false);
+    setCreated({ slug: result.slug });
   };
 
+  // ── Created ──────────────────────────────────────────────────────────────
+  if (created) {
+    const url = `${window.location.origin}/c/${created.slug}`;
+    return (
+      <Screen>
+        <Body>
+          <Done>
+            <Mark size={72} happy />
+            <div>
+              <h1>{name.trim()} is live</h1>
+              <Meta>
+                {[
+                  `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}`,
+                  weeks ? `${weeks} weeks` : 'open-ended',
+                  `${names.length} ${names.length === 1 ? 'person' : 'people'}`,
+                ].join(' · ')}
+              </Meta>
+            </div>
+
+            <LinkCard $tint>
+              <Tile tone="sand" icon="share" />
+              <Name>
+                <b>/c/{created.slug}</b>
+                <Meta>Anyone with this link can log and see the board</Meta>
+              </Name>
+            </LinkCard>
+
+            <Button
+              type="button"
+              $tone="ghost"
+              $block
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(url);
+                  setCopied(true);
+                } catch {
+                  setError('Couldn’t copy automatically — the link is shown above.');
+                }
+              }}
+            >
+              <Icon name="copy" />
+              {copied ? 'Link copied' : 'Copy the link'}
+            </Button>
+
+            <Hint>
+              That link is the only way in, and the only thing protecting the challenge. Share it
+              with the people playing and nobody else.
+            </Hint>
+          </Done>
+        </Body>
+        <FootBar>
+          <Button type="button" $block onClick={() => navigate(`/c/${created.slug}`)}>
+            Open {name.trim()}
+            <Icon name="next" />
+          </Button>
+        </FootBar>
+      </Screen>
+    );
+  }
+
+  // ── Form ─────────────────────────────────────────────────────────────────
   return (
-    <Sheet>
-      <Header>
-        <IconBtn onClick={() => navigate(-1)} aria-label="Back">
-          <ArrowIcon />
-        </IconBtn>
-        <div>
-          <Eyebrow>New challenge</Eyebrow>
-          <H2>Set it up</H2>
-        </div>
-      </Header>
-
+    <Screen>
       <Body>
-        {/* Step 1: Name & dates */}
-        <Step>
-          <StepHeader>
-            <StepNum>1</StepNum>
-            <H3>Name &amp; dates</H3>
-          </StepHeader>
-          <Col>
-            <Field>
-              <Label>Challenge name</Label>
-              <Input value={name} onChange={e => setName(e.target.value)} placeholder="Summer Challenge" />
-            </Field>
-            <Row>
-              <Field style={{ flex: 1 }}>
-                <Label>Start date</Label>
-                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-              </Field>
-              <Field style={{ flex: 1 }}>
-                <Label>End date (optional)</Label>
-                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-              </Field>
-            </Row>
-            <Field>
-              <Label>Timezone</Label>
-              <Input value={timezone} onChange={e => setTimezone(e.target.value)} />
-            </Field>
-          </Col>
-        </Step>
+        <TopBar
+          title="Set it up"
+          sub="New challenge"
+          left={
+            <IconButton type="button" aria-label="Cancel" onClick={() => navigate(-1)}>
+              <Icon name="close" />
+            </IconButton>
+          }
+          right={weeks ? <Pill>{weeks} wks</Pill> : undefined}
+        />
 
-        {/* Step 2: Rules */}
-        <Step>
-          <StepHeader>
-            <StepNum>2</StepNum>
-            <H3>Rules</H3>
-          </StepHeader>
-          <Eyebrow style={{ marginBottom: 8 }}>Start from a preset</Eyebrow>
-          <BtnRow>
-            {(['classic', 'minimal', 'custom'] as Preset[]).map(p => (
-              <Btn key={p} $active={preset === p} onClick={() => handlePresetChange(p)}>
-                {p.charAt(0).toUpperCase() + p.slice(1)}
-              </Btn>
-            ))}
-          </BtnRow>
-          <HintText style={{ marginTop: 0, marginBottom: 10, textAlign: 'left', fontStyle: 'normal' }}>
-            Tap a rule to edit, or add one and use &ldquo;Load example&rdquo; to see what each type looks like.
-          </HintText>
-          <SectionLbl>Rules · {rules.length}</SectionLbl>
-          <Col>
-            {rules.map(r => (
-              <RuleRow key={r.id} onClick={() => setEditingRule(r)} style={{ cursor: 'pointer' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14 }}>
-                    {r.emoji ? `${r.emoji} ` : ''}<strong>{r.name}</strong>
-                  </div>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)', marginTop: 3 }}>
-                    {RULE_KIND_INFO[r.kind].subtitle} · {formatRuleFormula(r)}
-                  </div>
-                </div>
-                <ChevRightIcon />
-              </RuleRow>
-            ))}
-            <DashedBtn onClick={() => setEditingRule('new')}>
-              <PlusIcon />
-              Add rule
-            </DashedBtn>
-          </Col>
-        </Step>
+        <Sheet>
+          <Section>
+            <NumHead>
+              <span className="n">1</span>
+              <div>
+                <h2>Name and dates</h2>
+                <Meta>All of this stays editable later.</Meta>
+              </div>
+            </NumHead>
+            <Stack>
+              <Field>
+                <label htmlFor="c-name">Challenge name</label>
+                <Input id="c-name" $text value={name} onChange={e => setName(e.target.value)} />
+                {name.length > 0 && !nameOk && (
+                  <ErrorText>
+                    That’s {name.trim().length} characters. Add {3 - name.trim().length} more.
+                  </ErrorText>
+                )}
+              </Field>
+              <Grid2>
+                <Field>
+                  <label htmlFor="c-start">Starts</label>
+                  <Input id="c-start" $text type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                </Field>
+                <Field>
+                  <label htmlFor="c-end">Ends</label>
+                  <Input id="c-end" $text type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                </Field>
+              </Grid2>
+              {!datesOk && <ErrorText>The end date needs to be on or after the start date.</ErrorText>}
+              <Field>
+                <label htmlFor="c-tz">Time zone</label>
+                <Select id="c-tz" $text value={timezone} onChange={e => setTimezone(e.target.value)}>
+                  {[...new Set([tzGuess, ...TIMEZONES])].map(z => (
+                    <option key={z} value={z}>{z}</option>
+                  ))}
+                </Select>
+                <Hint>Days roll over at midnight in this zone, for everyone.</Hint>
+              </Field>
+            </Stack>
+          </Section>
 
-        {/* Step 3: Password & members */}
-        <Step>
-          <StepHeader>
-            <StepNum>3</StepNum>
-            <H3>Owner password &amp; members</H3>
-          </StepHeader>
-          <Field>
-            <Label>Owner password</Label>
-            <Input
-              type="text"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Pick something memorable"
-            />
-          </Field>
-          <SectionLbl>Members ({memberNames.length})</SectionLbl>
-          <Col>
-            {memberNames.map((n, i) => (
-              <MemberRow key={i}>
-                <MemberBadge member={{ name: n }} size="sm" />
-                <span style={{ flex: 1, fontSize: 14 }}>{n}</span>
-                <SmIconBtn onClick={() => setMemberNames(prev => prev.filter((_, idx) => idx !== i))}>
-                  <XIcon />
-                </SmIconBtn>
-              </MemberRow>
-            ))}
-            <MemberRow>
-              <span
-                className="mbadge-placeholder"
-                style={{
-                  width: 28, height: 28, borderRadius: '50%',
-                  background: `${memberTone(newMember || 'X')}30`,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 9, opacity: 0.4, flexShrink: 0,
-                }}
-              >??</span>
-              <GhostInput
-                value={newMember}
-                onChange={e => setNewMember(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMemberLocal(); } }}
-                placeholder="Add a member"
-              />
-              <Btn onClick={addMemberLocal} disabled={!newMember.trim()} style={{ flex: 'unset', padding: '8px 12px', fontSize: 13 }}>
-                Add
-              </Btn>
-            </MemberRow>
-          </Col>
-          <HintText>More members can join later via the challenge link.</HintText>
-          {error && <ErrMsg>{error}</ErrMsg>}
-        </Step>
+          <Section>
+            <NumHead>
+              <span className="n">2</span>
+              <div>
+                <h2>Rules</h2>
+                <Meta>Four is a comfortable evening. Six is a project.</Meta>
+              </div>
+            </NumHead>
+            <Stack>
+              <Segmented role="group" aria-label="Starting rules">
+                <button type="button" aria-pressed={preset === 'classic'} onClick={() => usePreset('classic')}>Classic</button>
+                <button type="button" aria-pressed={preset === 'minimal'} onClick={() => usePreset('minimal')}>Minimal</button>
+                <button type="button" aria-pressed={preset === 'custom'} onClick={() => usePreset('custom')}>Empty</button>
+              </Segmented>
+
+              {rules.length === 0 ? (
+                <Hint>No rules yet — add at least one before you can create the challenge.</Hint>
+              ) : (
+                <List>
+                  {rules.map(rule => (
+                    <Row key={rule.id} style={{ paddingRight: 6 }}>
+                      <RuleTile rule={rule} />
+                      <Name
+                        as="button"
+                        type="button"
+                        onClick={() => setEditingRule(rule)}
+                        style={{ border: 0, background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer' }}
+                      >
+                        <b>{rule.name}</b>
+                        <Meta>{formatRuleFormula(rule)}</Meta>
+                      </Name>
+                      <IconButton type="button" aria-label={`Edit ${rule.name}`} onClick={() => setEditingRule(rule)}>
+                        <Icon name="edit" />
+                      </IconButton>
+                      <IconButton
+                        type="button"
+                        aria-label={`Remove ${rule.name}`}
+                        onClick={() => {
+                          setRules(rs => rs.filter(r => r.id !== rule.id));
+                          setPreset('custom');
+                        }}
+                      >
+                        <Icon name="trash" />
+                      </IconButton>
+                    </Row>
+                  ))}
+                </List>
+              )}
+
+              <AddRow type="button" onClick={() => setEditingRule('new')}>
+                <Icon name="plus" />
+                Add a rule
+              </AddRow>
+            </Stack>
+          </Section>
+
+          <Section>
+            <NumHead>
+              <span className="n">3</span>
+              <div>
+                <h2>Password and people</h2>
+                <Meta>The password is what lets you change things later.</Meta>
+              </div>
+            </NumHead>
+            <Stack>
+              <Field>
+                <label htmlFor="c-pw">Owner password</label>
+                <Input
+                  id="c-pw"
+                  $text
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                />
+                {password.length > 0 && !passwordOk ? (
+                  <ErrorText>
+                    That’s {password.trim().length} characters. Add {4 - password.trim().length} more.
+                  </ErrorText>
+                ) : (
+                  <Hint>
+                    Four characters or more. There’s no way to reset it, so pick something you’ll
+                    remember.
+                  </Hint>
+                )}
+              </Field>
+
+              {names.length > 0 && (
+                <List>
+                  {names.map(n => (
+                    <Row key={n} style={{ paddingRight: 6 }}>
+                      <MemberBadge member={{ name: n }} />
+                      <Name><b>{n}</b></Name>
+                      <IconButton
+                        type="button"
+                        aria-label={`Remove ${n}`}
+                        onClick={() => setNames(list => list.filter(x => x !== n))}
+                      >
+                        <Icon name="trash" />
+                      </IconButton>
+                    </Row>
+                  ))}
+                </List>
+              )}
+
+              <AddRow type="button" onClick={() => setAddingMember(true)}>
+                <Icon name="plus" />
+                Add someone
+              </AddRow>
+              <Hint>
+                You can add people later too. Everyone picks their own name from this list when they
+                open the link.
+              </Hint>
+            </Stack>
+          </Section>
+
+          {error && <ErrorText role="alert">{error}</ErrorText>}
+        </Sheet>
       </Body>
 
-      <Footer>
-        <LgBtn $variant="k" disabled={submitting} onClick={handleSubmit}>
-          {submitting ? 'Creating…' : 'Create & share'}
-        </LgBtn>
-      </Footer>
+      <FootBar>
+        <Button type="button" $tone="ghost" data-secondary onClick={() => navigate(-1)}>
+          Cancel
+        </Button>
+        <Button type="button" disabled={!ready || busy} onClick={submit}>
+          {busy ? 'Creating…' : 'Create challenge'}
+        </Button>
+      </FootBar>
 
-      {editingRule !== null && (
+      {editingRule && (
         <RuleEditor
           rule={editingRule === 'new' ? null : editingRule}
           allRules={rules}
-          onSave={handleRuleSave}
-          onDelete={editingRule !== 'new' ? () => handleRuleDelete((editingRule as Rule).id) : undefined}
           onClose={() => setEditingRule(null)}
+          onSave={saved => {
+            setRules(rs => (editingRule === 'new' ? [...rs, saved] : rs.map(r => (r.id === saved.id ? saved : r))));
+            setPreset('custom');
+            setEditingRule(null);
+          }}
+          {...(editingRule !== 'new'
+            ? {
+                onDelete: () => {
+                  setRules(rs => rs.filter(r => r.id !== editingRule.id));
+                  setPreset('custom');
+                  setEditingRule(null);
+                },
+              }
+            : {})}
         />
       )}
-    </Sheet>
+
+      {addingMember && (
+        <Dialog
+          title="Add someone"
+          onClose={() => {
+            setAddingMember(false);
+            setNameDraft('');
+          }}
+          actions={
+            <>
+              <Button
+                type="button"
+                $tone="ghost"
+                onClick={() => {
+                  setAddingMember(false);
+                  setNameDraft('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="button" disabled={nameDraft.trim().length < 2} onClick={addName}>
+                Add them
+              </Button>
+            </>
+          }
+        >
+          <p>Just their name — they pick it themselves when they open the link.</p>
+          <Field>
+            <label htmlFor="c-member">Name</label>
+            <Input
+              id="c-member"
+              $text
+              value={nameDraft}
+              onChange={e => setNameDraft(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addName()}
+            />
+          </Field>
+        </Dialog>
+      )}
+    </Screen>
   );
 }

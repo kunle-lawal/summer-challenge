@@ -44,6 +44,11 @@ export type CreateChallengeResult =
   | { ok: false; reason: 'cooldown'; remainingMs: number }
   | { ok: false; reason: 'slug_exhausted' };
 
+export type RenameChallengeResult =
+  | { ok: true }
+  | { ok: false; reason: 'not_found' }
+  | { ok: false; reason: 'empty_name' };
+
 export type UpdateConfigResult =
   | { ok: true }
   | { ok: false; reason: 'not_found' };
@@ -270,3 +275,45 @@ export async function deleteChallenge(
   return { ok: true };
 }
 
+
+// ---------------------------------------------------------------------------
+// Rename
+// ---------------------------------------------------------------------------
+
+/**
+ * Change a challenge's display name.
+ *
+ * `updateChallengeConfig` only ever wrote the `config` sub-object, so the name
+ * — documented as owner-editable since v2 — had no write path at all. The slug
+ * deliberately does not follow the name: it is the only thing gating access to
+ * the challenge, and a name-derived slug would be guessable.
+ */
+export async function renameChallenge(
+  challengeId: string,
+  newName: string,
+  actor: ActorContext,
+): Promise<RenameChallengeResult> {
+  const trimmed = newName.trim();
+  if (trimmed.length === 0) return { ok: false, reason: 'empty_name' };
+
+  const ref = doc(db, 'challenges', challengeId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return { ok: false, reason: 'not_found' };
+
+  const before = (snap.data() as Challenge).name;
+  if (before === trimmed) return { ok: true };
+
+  const batch = writeBatch(db);
+  batch.update(ref, { name: trimmed });
+
+  appendAuditLog(batch, challengeId, {
+    actor,
+    action: 'challenge.rename',
+    target: { kind: 'challenge', id: challengeId },
+    before: { name: before },
+    after: { name: trimmed },
+  });
+
+  await batch.commit();
+  return { ok: true };
+}
