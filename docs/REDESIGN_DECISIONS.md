@@ -83,3 +83,53 @@ That also makes the change UI-only, with no risk to the scoring engine.
 `updateChallengeConfig` only ever wrote the `config` sub-object, so the name —
 documented as owner-editable — could not actually be edited. Added
 `renameChallenge`. The slug deliberately does not follow the name.
+
+### The prototype's rank animation overlaps at 200% zoom
+
+`board.jsx` animates leaderboard reorders by absolutely positioning each row at
+`index * 66px` inside a fixed-height container. That holds only while every row
+is exactly 66px, and at 200% text zoom they aren't — the rows land on top of one
+another. `ui-design-patterns.md` §13 requires the layout to survive that zoom, so
+the standings are a normal list and the reorder isn't animated. A FLIP
+implementation would restore it, if it turns out to be missed.
+
+### Spacing follows the design, not the 8pt grid
+
+§1 asks for multiples of 8 (or 4). The design's own CSS uses 6, 10, 14, 18 and
+22px throughout, consistently. Reproducing it faithfully was the brief, the
+rhythm is internally coherent, and nothing here harms anyone — so the design's
+values are kept rather than silently regularised. Noting it because §1 asks for
+deviations to be stated.
+
+### Rows had no hover state when rendered as links
+
+`Row`'s interactive styles were gated on `&:is(button)`. Home's leaderboard peek,
+the History day list and the standings all render rows as `<Link>`, so they were
+`<a>` elements getting no hover, no pointer cursor and no active state. Widened
+to `&:is(button, a)`.
+
+### Bugs found in existing code along the way
+
+- `RuleEditor`'s delete button called `onClose` instead of `onDelete`, so
+  deleting a rule silently did nothing. Gone in the rewrite.
+- `setTrackerConfig` wrote its audit row as `member.rename` with a comment noting
+  it was the closest available action. Added `member.tracker_config`.
+- `updateChallengeConfig` only ever wrote `config`, so `Challenge.name` —
+  documented as owner-editable — had no write path.
+- `ErrorBoundary` showed "Something went wrong" plus the raw exception, which
+  §9 names explicitly as the thing not to ship.
+
+## Verification
+
+Every commit on this branch typechecks and passes the full suite. Final state:
+
+- `tsc --noEmit` clean
+- 269 tests passing (199 inherited, 70 added)
+- `vite build` succeeds
+- dev server boots; every page module transforms without error
+- zero hardcoded colour literals outside `src/theme/`
+- no icon-only control without an accessible name; no `div` with a click handler
+
+Not verified, for want of a browser driver in this repo: actual pixel rendering,
+real-device touch behaviour, and the 200% zoom and 390px cases as rendered rather
+than as reasoned about.

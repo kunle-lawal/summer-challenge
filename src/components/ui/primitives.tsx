@@ -315,8 +315,11 @@ export const Row = styled.div<{ $you?: boolean; $lead?: boolean; $off?: boolean;
   `}
   ${({ $off }) => $off && css`opacity: 0.55;`}
 
-  &:is(button) {
+  /* Rows render as button, a, or div depending on what they do. */
+  &:is(button, a) {
     cursor: pointer;
+    text-decoration: none;
+    font-weight: 400;
     transition: background 0.16s ${({ theme }) => theme.ease.out}, border-color 0.16s;
 
     &:hover {

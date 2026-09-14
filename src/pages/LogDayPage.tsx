@@ -358,9 +358,12 @@ export function LogDayPage() {
 
   // ── Celebration ──────────────────────────────────────────────────────────
   if (phase === 'saved') {
-    const streak = getLoggedDayStreak([...myEntries.filter(e => e.date !== date), {
-      ...(existing ?? {} as Entry), date, memberId: me.id,
-    } as Entry], today);
+    // The save has just happened but the snapshot may not have landed yet, so
+    // count this date in explicitly rather than waiting for it to arrive.
+    const saved: Entry[] = myEntries.some(e => e.date === date)
+      ? myEntries
+      : [...myEntries, { ...(existing ?? ({} as Entry)), id: 'just-saved', memberId: me.id, date }];
+    const streak = getLoggedDayStreak(saved, today);
 
     return (
       <Body>

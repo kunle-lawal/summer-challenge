@@ -82,7 +82,6 @@ export function FreePassControl({ state, selected, onSelect, disabled }: FreePas
   if (!state.offered) return null;
 
   const exhausted = state.left <= 0 && !selected;
-  const remaining = selected ? state.left : state.left;
 
   return (
     <FreePass
@@ -95,9 +94,7 @@ export function FreePassControl({ state, selected, onSelect, disabled }: FreePas
       <span className="t">
         {selected ? 'Free pass used' : exhausted ? 'No free passes left' : 'Use a free pass'}
         <small>
-          {exhausted
-            ? `All ${state.quota} used`
-            : `${remaining} of ${state.quota} left`}
+          {exhausted ? `All ${state.quota} used` : `${state.left} of ${state.quota} left`}
         </small>
       </span>
     </FreePass>
@@ -315,7 +312,9 @@ export function hintFor(rule: Rule): string | null {
     case 'counter':
       return `Points scale with the count — half of ${rule.target.toLocaleString()} earns half the points.`;
     case 'penalty':
-      return rule.weeklyFirstWaived ? 'The first slip each week costs nothing.' : null;
+      // The waiver is already stated on the Slipped choice — §6, every value
+      // appears exactly once.
+      return null;
     default:
       return null;
   }

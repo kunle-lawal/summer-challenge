@@ -53,9 +53,13 @@ There is no password per member, no invite token, and no way to “lock” a nam
 
 | Route | Member required? |
 |-------|------------------|
-| `/c/:slug` (log) | Yes — `RequireMember` → `/pick` |
-| `/c/:slug/home`, `/board`, `/history`, `/rules`, `/admin` | No — browse without picking a name |
+| `/c/:slug` (Home) | Yes — `RequireMember` → `/pick` |
+| `/c/:slug/log` (Log day) | Yes — `RequireMember` → `/pick` |
+| `/c/:slug/board`, `/history`, `/rules`, `/m/:id`, `/admin` | No — browse without picking a name |
 | `/new` | No |
+
+Home and Log are personal (your points, your rank, your day), so both require a
+member. The read-only views stay open so a shared link always opens on something.
 
 ### Firebase Auth
 
@@ -97,67 +101,105 @@ There is **no** Google Sign-In, global user account, or “switch user” auth f
 - **Errors:** “Challenge not found.” when slug index miss or doc missing.
 - **Nested routes:** see [Routing](#3-bootstrap-and-routing).
 
-#### Main navigation — [`TopBar.tsx`](../src/components/layout/TopBar.tsx) + [`BottomNav.tsx`](../src/components/layout/BottomNav.tsx)
+#### Main navigation — [`BottomNav.tsx`](../src/components/layout/BottomNav.tsx)
 
-- **Desktop (≥ 768 px):** fixed left sidebar — Home, Log day, Leaderboard, History.
-- **Mobile (< 768 px):** fixed bottom tab bar — same four tabs.
-- **Not in nav:** Rules (`/rules`), Admin (`/admin`), Member profile (`/m/:id`) — reached from Home or Leaderboard.
+- **Every width:** a bottom tab bar with four tabs — **Home · Board · History · Rules**.
+- **No desktop sidebar.** The v2 design specifies a single 390 px layout, so
+  [`Screen`](../src/components/layout/Screen.tsx) caps the column at
+  `theme.size.contentMax` (480 px) and centres it rather than inventing a wide
+  variant. Everything inside is fluid down to 320 px.
+- **Log day is not a tab** — it is the primary CTA on Home, which is what the
+  Home screen is built around.
+- **Not in nav:** Admin (`/admin`, via the gear in the Home header), Member
+  profile (`/m/:id`, from Home or Leaderboard).
 
 ---
 
 ### Log day — [`LogDayPage.tsx`](../src/pages/LogDayPage.tsx)
 
-**Route:** `/c/:slug` (index, guarded by `RequireMember`).
+**Route:** `/c/:slug/log` (guarded by `RequireMember`).
 
-#### Page structure
+Two modes, both from the same page and the same data:
 
-1. **Header** — “Log day”, member name (→ pick), date label, **today’s points** pill.
-2. **Date strip** — challenge `startDate` through **today + 2 preview days**; chip states: today / logged / open / future.
-3. **Week summary band** — week number, binary/penalty cap usage, free-pass counts.
-4. **Rule cards** — one card per rule (via [`ruleCardRouter.tsx`](../src/components/log/ruleCardRouter.tsx)), sorted by `rule.order`.
-5. **Streak bands** — attached to the rule they track, or standalone if orphaned. Each band shows **this run only**: labeled calendar days that count (filled dots), dashed projected days still needed, and a date range hint. State uses [`getStreakRunAtDate()`](../src/lib/rules/streakRun.ts) (positive scoring days per `evaluateEntry`, scoped to the selected log date).
+| When | Shape |
+|------|-------|
+| Today | **Step wizard** — one rule per screen, progress bar, Back / Next, final save, then a celebration screen |
+| A past day (`?date=YYYY-MM-DD`) | **One editable list** — every rule at once, Cancel / Save changes |
 
-#### Rule card kinds
+A past day is reviewed as a whole rather than stepped through: you're checking
+what's there against what you remember, and Next would hide the other answers.
 
-| Kind | Component | Value stored |
-|------|-----------|--------------|
-| `binary` | [`BinaryRuleCard.tsx`](../src/components/log/BinaryRuleCard.tsx) | `'yes' \| 'no' \| 'free'` |
-| `counter` | [`CounterRuleCard.tsx`](../src/components/log/CounterRuleCard.tsx) | `number` |
-| `range` | [`RangeRuleCard.tsx`](../src/components/log/RangeRuleCard.tsx) | `number` |
-| `penalty` | [`PenaltyRuleCard.tsx`](../src/components/log/PenaltyRuleCard.tsx) | `'clean' \| 'infraction' \| 'free'` |
-| `tracker` | [`TrackerRuleCard.tsx`](../src/components/log/TrackerRuleCard.tsx) | `number` (daily measurement) |
-| `streak` | [`StreakRuleCard.tsx`](../src/components/log/StreakRuleCard.tsx) | *(derived — no stored value)* |
+`?rule=<id>` opens the wizard at that rule — Home's Today cards link that way.
 
-#### Tracker rules
+#### Save behaviour
 
-- Owner sets `maxPoints`, default `unit`, `decimals` on the rule.
-- Each member sets personal goal on first log (`label`, `unit`, `startVal`, `goalVal`, `direction`) → stored on `members/{id}.trackerConfig`.
-- Scoring: [`trackerProgress.ts`](../src/lib/rules/trackerProgress.ts) — progress toward goal × `maxPoints`.
-- **Leaderboard:** only the **latest** tracker entry per member counts toward totals ([`aggregate.ts`](../src/lib/rules/aggregate.ts)).
+- **Batch save.** The wizard collects a whole day and writes it with **one**
+  `upsertEntry()` call. The write path always accepted a full `values` map, so
+  the old per-rule immediate save was only ever a UI choice.
+- **One entry per (member, date).** `values` is `{ [ruleId]: RawEntryValue }`.
+- **Points** are recomputed on every upsert via [`evaluateEntry()`](../src/lib/rules/evaluate.ts)
+  and snapshotted on the entry. Nothing reads that snapshot back — aggregation
+  always recomputes (see §8).
+- **Server values sit under local edits.** A `touched` set means a Firestore
+  snapshot landing mid-edit can never overwrite what was just typed.
+- **Live preview** builds a synthetic `Entry` from the draft and runs the real
+  evaluator, so caps, waivers and free passes are right before saving.
+- **Locked when:** `status === 'ended'`, or the date is outside
+  `[startDate, endDate]` ([`isWithinEditWindow()`](../src/lib/dates.ts)).
 
-#### Save behavior
+#### Rule inputs — [`RuleInput.tsx`](../src/components/log/RuleInput.tsx)
 
-- **Per-rule save:** choosing a value calls `upsertEntry()` immediately (no whole-day confirm bar).
-- **One entry per (member, date):** `values` is a map `{ [ruleId]: RawEntryValue }`; each save merges into that day’s doc.
-- **Points:** recomputed on every upsert via [`evaluateEntry()`](../src/lib/rules/evaluate.ts) and snapshotted on the entry.
-- **Locked when:** challenge `status === 'ended'`, date is in the **future**, or date is outside `[startDate, endDate]` / before start ([`isWithinEditWindow()`](../src/lib/dates.ts)).
-- **Editable:** any in-range past day while the challenge is active (updates are allowed).
+One input per **kind**, not per rule, taking unit/decimals/bounds from the rule:
 
-#### Range scoring
+| Kind | Input | Value stored |
+|------|-------|--------------|
+| `binary` | Two choices + free-pass control | `'yes' \| 'no' \| 'free'` |
+| `penalty` | Two choices + free-pass control | `'clean' \| 'infraction' \| 'free'` |
+| `counter` | Number + quick-value chips around the target | `number` |
+| `range` | Number + unit | `number` |
+| `tracker` | Number + unit | `number` |
+| `streak` | *(no input — derived)* | — |
 
-In-band points scale linearly from `pointsAtMin` (at band low) to `pointsAtMax` (at band high); `pointsOutside` when out of band. Implemented in [`ruleDocs.ts`](../src/lib/rules/ruleDocs.ts) `scoreRangeValue`.
+#### Free passes
+
+Spendable from the log, which they never were before. The control sits **below**
+the two real answers rather than beside them — spending a pass is a rescue, not
+a peer of doing the thing — and carries the remaining balance.
+
+[`getFreePassState()`](../src/lib/rules/kinds.ts) takes an `excludeDate` so
+re-opening the day a pass was spent on doesn't show it as both gone and
+available.
+
+#### Tracker goal setup
+
+A tracker rule with no `member.trackerConfig` inserts a **goal-setup step**
+before its input: label, unit, start, goal. Direction is derived (goal below
+start = `'down'`). The v2 design has no such screen — it puts start and goal on
+the rule, which is not where they live.
+
+#### Rule retirement
+
+`activeRules()` drives the wizard, Home's Today list and the Rules page, so a
+rule with `active: false` disappears from all of them. **Scoring ignores the
+flag** — see §8.
 
 ---
 
 ### Home — [`ChallengeHomePage.tsx`](../src/pages/ChallengeHomePage.tsx)
 
-**Route:** `/c/:slug/home`
+**Route:** `/c/:slug` (index, guarded by `RequireMember`). The landing screen.
 
-- Hero stats: week number, days left, member count.
-- “You” card with rank and points; **Switch** → `/pick`.
-- **Log today** CTA → `/c/:slug` (disabled before start or after end).
-- Podium peek + standings snippet → full board.
-- Header actions: **New challenge** (`/new`), **Settings** (`/admin`).
+1. **Dark hero** — avatar (→ `/pick`), challenge name, week and date, gear
+   (→ `/admin`); a "Logging as …" chip; a progress bar; and three stats —
+   points, logged-day streak, rank.
+2. **Primary CTA** — "Log today" / "Finish today's log · N left" / "Edit today's
+   log", disabled before the start date and after the challenge ends.
+3. **Today** — one card per daily rule with its value and points, plus any
+   streak rule's pip strip attached to the rule it watches.
+4. **Personal goal** — the tracker card with progress track and knob.
+5. **Leaderboard peek** — top three, linking to profiles.
+
+`/c/:slug/home` redirects here so pre-redesign bookmarks resolve.
 
 ---
 
@@ -165,11 +207,18 @@ In-band points scale linearly from `pointsAtMin` (at band low) to `pointsAtMax` 
 
 **Route:** `/c/:slug/board`
 
-- **Data:** [`buildLeaderboard()`](../src/lib/rules/aggregate.ts) over `activeMembers` + `entries`.
-- **View modes:** Total · Per rule · Avg/day (segment control).
-- **Podium:** top 3 (display order 2nd, 1st, 3rd).
-- **Standings table:** expandable per-rule bars; row click → [`MemberProfilePage`](../src/pages/MemberProfilePage.tsx).
-- **Inactive members** excluded from standings.
+- **Scopes:** **All time** · **This week** (segmented control).
+- **Week scope** passes a `DateRange` to [`buildLeaderboard()`](../src/lib/rules/aggregate.ts).
+  The range is applied **when totting points up, not by filtering entries first** —
+  weekly caps, penalty waivers and streak runs all depend on days outside the
+  window, so filtering first would quietly change how the remaining days score.
+- **Rank-change pills** in week scope show the move against all-time rank.
+- **Podium:** top 3 (display order 2nd, 1st, 3rd), hidden below three members.
+- **Standings:** plain list in rank order, each row → `MemberProfilePage`.
+  The prototype absolutely positions rows at a fixed height to animate reorders;
+  that overlaps at 200% text zoom, so it isn't reproduced.
+- **States:** loading skeletons · error with retry · empty · populated.
+- **Inactive members** excluded.
 
 ---
 
@@ -177,12 +226,11 @@ In-band points scale linearly from `pointsAtMin` (at band low) to `pointsAtMax` 
 
 **Route:** `/c/:slug/history`
 
-- **Source:** `auditLog` from `ChallengeContext` (not a reconstructed workout table).
-- **Filters:** All · Entries · Admin.
-- **Grouped by date;** entry rows show rule-level diffs (e.g. “Steps: 7000 → 8500”).
-- **Actions covered:** challenge create/config/status, member add/remove/rename, entry create/update/delete, owner login attempts.
-
-There is **no** “clear all data” admin action and **no** Kunle-name gate.
+- **Every day of the challenge so far**, newest first, one row each: date label,
+  how many rules are filled, per-rule tick marks, the day's points.
+- Each row links to `/c/:slug/log?date=…` — the same editor used everywhere.
+- **This is no longer the audit-log feed.** The audit viewer moved to `/admin`
+  (Settings → History log), where it gained filters and a per-change diff.
 
 ---
 
@@ -190,7 +238,11 @@ There is **no** “clear all data” admin action and **no** Kunle-name gate.
 
 **Route:** `/c/:slug/m/:memberId`
 
-- Per-member totals, per-rule breakdown, recent entries.
+- Total points, logged-day streak ring, per-rule contribution bars, and a
+  seven-day grid for the current challenge week.
+- **Owner actions** (remove, with an Undo toast) appear only when admin mode is
+  unlocked — `AdminModeProvider` now wraps the whole challenge, not just `/admin`.
+- Empty state for a member who has logged nothing; not-found state for a bad id.
 
 ---
 
@@ -198,21 +250,35 @@ There is **no** “clear all data” admin action and **no** Kunle-name gate.
 
 **Route:** `/c/:slug/rules`
 
-- Read-only list of challenge rules with formulas from `formatRuleFormula`.
+- One row per active rule: formula from `formatRuleFormula`, plus what the rule
+  is doing for you right now (today's value, streak progress, free passes left).
+- Tapping expands a plain-language explanation from
+  [`explainRule()`](../src/lib/rules/ruleDocs.ts), which uses the rule's real
+  numbers. `rule.description` overrides it when set. **One panel open at a time.**
 
 ---
 
-### Admin — [`AdminPage.tsx`](../src/pages/AdminPage.tsx) + [`AdminModeContext.tsx`](../src/context/AdminModeContext.tsx)
+### Settings — [`AdminPage.tsx`](../src/pages/AdminPage.tsx) + [`AdminModeContext.tsx`](../src/context/AdminModeContext.tsx)
 
-**Route:** `/c/:slug/admin` (wrapped in `AdminModeProvider`).
+**Route:** `/c/:slug/admin`
 
-1. **Password gate** — verifies against `challenge.ownerPasswordHash` / `ownerPasswordSalt` ([`ownerAuth.ts`](../src/lib/ownerAuth.ts)); session in `sessionStorage` (per tab).
-2. **Home** — Members · Rules & dates · Audit log.
-3. **Members** — add, soft-remove (`active: false`), rename; name conflicts return suggested suffix.
-4. **Config** — edit rules/dates; end/reopen challenge; delete challenge (type name to confirm).
-5. **Audit** — full audit log viewer (admin UI).
+1. **Password gate** — verifies against `ownerPasswordHash` / `ownerPasswordSalt`
+   ([`ownerAuth.ts`](../src/lib/ownerAuth.ts)); session in `sessionStorage`, per tab.
+2. **One settings page**, not a menu of sub-screens:
+   - **Basics** — challenge name (now editable, via `renameChallenge`) and end date
+   - **Rules** — retire switch, edit, add, delete
+   - **Members** — add, rename, remove (with Undo), put back
+   - **History log** — the audit viewer, filtered by All / Entries / Members / Config / Owner
+   - **Danger** — end / reopen the challenge, delete it (type the name to confirm)
+3. **Rule editor** — [`RuleEditor.tsx`](../src/components/admin/RuleEditor.tsx),
+   a full-screen surface covering every field of all six kinds. Kind can only be
+   chosen while creating: switching it on a live rule would orphan every value
+   logged against it.
 
-Owner actions write audit entries via [`audit.ts`](../src/lib/audit.ts). Entry delete is owner-only ([`entries.ts`](../src/lib/entries.ts) `deleteEntry`).
+Audit rendering lives in [`auditDisplay.ts`](../src/lib/auditDisplay.ts) as pure
+functions. `auditChanges()` lists only fields that actually differ.
+
+Owner actions write audit entries via [`audit.ts`](../src/lib/audit.ts).
 
 ---
 
@@ -262,17 +328,20 @@ summer-challenge/
     │   ├── createCooldown.ts
     │   ├── recentChallenges.ts
     │   ├── selectedMember.ts
-    │   └── rules/             # evaluate, aggregate, presets, kinds, ruleDocs, trackerProgress
+    │   ├── auditDisplay.ts    # audit row → title, category, change list
+    │   └── rules/             # evaluate, aggregate, presets, kinds, ruleDocs,
+    │                          # trackerProgress, streakRun, display, ruleLook
     ├── context/
     │   ├── ChallengeContext.tsx
     │   ├── SelectedMemberContext.tsx
     │   └── AdminModeContext.tsx
     ├── theme/
     ├── components/
-    │   ├── layout/            # Layout, TopBar, BottomNav, LoadingState, ErrorBoundary
-    │   ├── log/               # Rule cards + ruleCardRouter
+    │   ├── layout/            # Screen kit, Layout, BottomNav, LoadingState, ErrorBoundary
+    │   ├── log/               # RuleInput (+ free-pass control, points preview)
     │   ├── admin/             # RuleEditor
-    │   └── ui/                # Icons, MemberBadge
+    │   └── ui/                # primitives, feedback, Icons, Tile, MemberBadge
+    ├── test/                  # fixtures for render tests
     └── pages/
         RootRedirect, CreateChallengePage, PickMemberPage
         ChallengeHomePage, LogDayPage, LeaderboardPage, HistoryPage
@@ -296,10 +365,10 @@ There is **no `hooks/` folder**: use **`useChallenge`**, **`useSelectedMember`**
 |------|------|-------|
 | `/` | `RootRedirect` | Recent challenge → `/c/:slug`, else → `/new`. |
 | `/new` | `CreateChallengePage` | Create wizard. |
-| `/c/:slug` | `LogDayPage` | Default log view. `RequireMember` → `/pick` if no member. |
-| `/c/:slug/home` | `ChallengeHomePage` | Dashboard. No member guard. |
+| `/c/:slug` | `ChallengeHomePage` | Landing screen. `RequireMember` → `/pick`. |
+| `/c/:slug/log` | `LogDayPage` | Wizard for today; `?date=` opens a past day, `?rule=` jumps to a rule. `RequireMember`. |
+| `/c/:slug/home` | redirect | → `/c/:slug` (pre-redesign bookmarks). |
 | `/c/:slug/pick` | `PickMemberPage` | Full-screen; no chrome. |
-| `/c/:slug/log` | redirect | → `/c/:slug` (bookmark alias). |
 | `/c/:slug/board` | `LeaderboardPage` | Podium + standings. |
 | `/c/:slug/history` | `HistoryPage` | Audit log feed. |
 | `/c/:slug/m/:memberId` | `MemberProfilePage` | Per-member breakdown. |
@@ -307,7 +376,12 @@ There is **no `hooks/` folder**: use **`useChallenge`**, **`useSelectedMember`**
 | `/c/:slug/admin` | `AdminPage` | Password gate → admin sub-views. `AdminModeProvider`. |
 | `*` | `Navigate` | → `/`. |
 
-**Provider chain for `/c/:slug/*`:** `ChallengeProvider` (slug resolution + 4 `onSnapshot` listeners + slug index read) → `SelectedMemberProvider` → `Outlet`. Chrome routes use pathless `ChromeLayout` → `Layout` with `TopBar` + `BottomNav`. `/pick` is outside `ChromeLayout`.
+**Provider chain for `/c/:slug/*`:** `ChallengeProvider` (slug resolution + 4 `onSnapshot` listeners + slug index read) → `SelectedMemberProvider` → `AdminModeProvider` → `Outlet`. Chrome routes use pathless `ChromeLayout` → `Layout` with `BottomNav`. `/pick` is outside `ChromeLayout`.
+
+`AdminModeProvider` wraps the whole challenge rather than only `/admin`, so
+owner-only controls can appear where they belong (removing a member from their
+profile, for instance). Unlocking still happens once, on Settings, and still
+lasts only for that tab.
 
 **Guards:** `RequireMember` checks `useSelectedMember()`. Admin password gate is inside `AdminPage`, not a route guard.
 
@@ -360,10 +434,22 @@ Resets when `challengeId` changes or tab closes.
 
 | File | Purpose |
 |------|---------|
-| [`theme.ts`](../src/theme/theme.ts) | `AppTheme`: `color.*`, `font.display` / `font.body` / `font.mono` (Geist), `radii.*`. |
+| [`theme.ts`](../src/theme/theme.ts) | `AppTheme`: `color.*`, `tone.*` (six pastel tile tones), `font.*` (Sora display, Plus Jakarta Sans body), `radii.*`, `shadow.*`, `ease.*`, `size.*`. |
 | [`styled.d.ts`](../src/theme/styled.d.ts) | `DefaultTheme` extends `AppTheme`. |
 | [`AppThemeProvider.tsx`](../src/theme/AppThemeProvider.tsx) | `ThemeProvider theme={appTheme}`. |
-| [`GlobalStyle.tsx`](../src/theme/GlobalStyle.tsx) | Reset + `body` from theme. |
+| [`GlobalStyle.tsx`](../src/theme/GlobalStyle.tsx) | Reset, six-step type ramp, focus ring, `prefers-reduced-motion`. |
+
+**Every colour in `src/` comes from the theme** — there are no hardcoded hex
+values outside `src/theme/`. Two deliberate departures from the source design,
+recorded in [`REDESIGN_DECISIONS.md`](REDESIGN_DECISIONS.md): `ink3` is darkened
+to clear WCAG AA (3.2:1 → 4.95:1), and interactive targets are raised to 44 px.
+
+Shared components live in [`ui/primitives.tsx`](../src/components/ui/primitives.tsx)
+(buttons, rows, fields, choices, chips, segmented, switch, stepper, pills,
+meters), [`ui/feedback.tsx`](../src/components/ui/feedback.tsx) (dialog, toast,
+ring, count-up, empty state, skeleton) and
+[`layout/Screen.tsx`](../src/components/layout/Screen.tsx) (screen shell, top
+bar, hero, stats, footer bar).
 
 ---
 
@@ -396,15 +482,21 @@ Security rules: [`firestore.rules`](../firestore.rules) — public read; shape-v
 
 ## 7. Layout and shared UI
 
-**[`Layout.tsx`](../src/components/layout/Layout.tsx)**
-
-- **< 768 px:** `BottomNav` (fixed, 64 px + safe area) + main with bottom padding.
-- **≥ 768 px:** `TopBar` (fixed 200 px sidebar) + main shifted right; `BottomNav` hidden.
+**[`Layout.tsx`](../src/components/layout/Layout.tsx)** — a `Screen` with the
+`BottomNav` pinned beneath it. One layout at every width: the column is capped
+at 480 px and centred, with the app background either side. No desktop sidebar.
 
 | Component | Role |
 |-----------|------|
+| `Screen` / `Body` / `Sheet` | The scrolling column and its padded content |
+| `TopBar` / `Hero` / `Stats` / `FootBar` | Header, dark panel, stat strip, sticky actions |
 | `LoadingState` | Full-screen loading message |
-| `ErrorBoundary` | “Something went wrong” + Reload |
+| `ErrorBoundary` | Names what broke, confirms logged data is safe, offers a reload |
+| `EmptyState` | Shared empty / error state — every screen has one |
+| `Dialog` / `Toast` | Bottom-sheet modal with a focus trap; undo toast |
+
+Every screen designs all four states — loading, empty, error, populated — and
+`screens.smoke.test.tsx` renders each of them.
 
 ---
 
@@ -424,11 +516,34 @@ Week boundaries: [`getWeekWindow()`](../src/lib/dates.ts) from `config.weekAncho
 
 | Function | Use |
 |----------|-----|
-| `aggregateMember` | One member’s standing |
-| `buildLeaderboard` | All active members, sorted |
-| `buildWeeklySummary` | Cap/free-pass stats for log UI |
+| `aggregateMember` | One member's standing; optional `DateRange` |
+| `buildLeaderboard` | All active members, sorted; optional `DateRange` |
+| `buildWeeklySummary` | Cap / free-pass stats for the log UI |
+| `getLoggedDayStreak` | Consecutive days logged, counting back from today |
 
-Tracker totals use **latest entry only** per tracker rule. Streak bonuses added in `computeStreakBonuses`.
+Tracker totals use **latest entry only** per tracker rule. Streak bonuses added
+in `computeStreakBonuses`.
+
+**Aggregation always recomputes from raw values** — nothing reads the `pts`
+snapshotted on the entry doc. Two consequences worth knowing:
+
+- Editing a rule **re-scores every day ever logged against it**, including past
+  weeks. The rule editor says so; the source design claims the opposite.
+- `rule.active` is therefore **ignored by scoring**. Retiring a rule takes it off
+  the log from that moment; the values already logged keep scoring exactly as
+  before. Honouring the flag would have retroactively voided a rule's whole
+  contribution the instant an owner toggled it.
+
+`DateRange` ("this week" on the leaderboard) is applied when accumulating, not by
+filtering entries before evaluation — caps, waivers and streak runs all depend on
+days outside the window.
+
+### Free passes — [`kinds.ts`](../src/lib/rules/kinds.ts)
+
+`getFreePassState(rule, entries, excludeDate?)` → `{ offered, quota, used, left,
+spentOnDate }`. Binary and penalty rules only. `excludeDate` keeps a pass spent
+on the day being edited out of the "used" count, so re-opening that day doesn't
+show the pass as both gone and available.
 
 ### Presets — [`presets.ts`](../src/lib/rules/presets.ts)
 
@@ -442,8 +557,8 @@ Tracker totals use **latest entry only** per tracker rule. Streak bonuses added 
 | Module | Responsibility |
 |--------|----------------|
 | `firebase.ts` | App init; exports `db` |
-| `challenges.ts` | Create, update config, change status, delete |
-| `members.ts` | Add, remove, rename, `setTrackerConfig` |
+| `challenges.ts` | Create, update config, **rename**, change status, delete |
+| `members.ts` | Add, remove, **restore**, rename, `setTrackerConfig` |
 | `entries.ts` | `upsertEntry`, `deleteEntry` (owner) |
 | `audit.ts` | Append audit rows on every write |
 | `dates.ts` | Timezone dates, `isWithinEditWindow`, week windows |
@@ -451,6 +566,7 @@ Tracker totals use **latest entry only** per tracker rule. Streak bonuses added 
 | `createCooldown.ts` | 1-hour create throttle (localStorage) |
 | `recentChallenges.ts` | Recent slug list for `/` redirect |
 | `selectedMember.ts` | Per-slug member id in localStorage |
+| `auditDisplay.ts` | Audit row → title, category, change list |
 
 **Not wired at runtime:** [`appCheck.ts`](../src/lib/appCheck.ts) exists but is not imported anywhere.
 
@@ -462,7 +578,7 @@ Split across focused files; barrel export in [`index.ts`](../src/types/index.ts)
 
 | Type | File |
 |------|------|
-| `Rule`, rule kinds | `rule.ts` |
+| `Rule` (incl. `active`), rule kinds, `isRuleActive` / `activeRules` | `rule.ts` |
 | `Challenge`, `ChallengeConfig` | `challenge.ts` |
 | `Member`, `MemberTrackerConfig` | `member.ts` |
 | `Entry`, `RawEntryValue` | `entry.ts` |
@@ -496,7 +612,11 @@ Split across focused files; barrel export in [`index.ts`](../src/types/index.ts)
 |---------|--------|
 | `npm run dev` | Vite dev server |
 | `npm run build` | `tsc --noEmit` + `vite build` → `dist/` |
-| `npm test` | Vitest |
+| `npm test` | Vitest (watch) |
+| `npm run test:run` | Vitest, single pass |
+
+`vitest.config.ts` mirrors the `@/` alias from `vite.config.ts` so tests can
+import pages the same way the app does.
 
 SPA: all routes → `index.html`.
 
@@ -508,7 +628,7 @@ SPA: all routes → `index.html`.
 |------|-------|
 | Google Sign-In / Firebase Auth UI | Removed with v1 |
 | Google Sheets / `sheets.ts` | Removed |
-| Fixed gym/steps/junk UI | Replaced by rule cards |
+| Fixed gym/steps/junk UI | Replaced by kind-driven rule inputs |
 | `scoring.ts` / `history.ts` / `config.ts` | Removed |
 | “For today” encouragement card | Spec in [`ARCHIVED_ENCOURAGEMENT_FEATURE.md`](ARCHIVED_ENCOURAGEMENT_FEATURE.md); no `archive/` code in repo |
 | Goal reset window UI | No env-driven reset flow in v2 |
@@ -519,10 +639,17 @@ SPA: all routes → `index.html`.
 ## 14. Conventions for future changes
 
 1. **New challenge-scoped route** — Add under `/c/:slug` in `App.tsx`; add nav link if it belongs in primary tabs.
-2. **New rule kind** — `types/rule.ts` + `types/entry.ts` + `evaluate.ts` + card component + `ruleCardRouter.tsx` + `RuleEditor` + tests.
+2. **New rule kind** — `types/rule.ts` + `types/entry.ts` + `evaluate.ts` +
+   a branch in `RuleInput.tsx` + `display.ts` + `ruleLook.ts` (tone and glyph) +
+   `ruleDocs.ts` (`defaultForKind`, `explainRule`, `formatRuleFormula`) +
+   `RuleEditor` + tests.
 3. **New Firestore field** — `types/` → write module → `ChallengeContext` if subscribed → pages.
-4. **New theme token** — `theme/theme.ts` + `styled.d.ts`.
-5. **Behavior change** — update this doc in the same change.
+4. **New theme token** — `theme/theme.ts` (`styled.d.ts` picks it up
+   automatically). Never write a colour literal in a component.
+5. **New screen** — add a case to `src/pages/screens.smoke.test.tsx`. It renders
+   each page with realistic fixtures across empty, error and edge states, which
+   catches crashes a typecheck cannot.
+6. **Behaviour change** — update this doc in the same change.
 
 ---
 
@@ -532,10 +659,15 @@ SPA: all routes → `index.html`.
 |----------|-----|
 | [`README.md`](../README.md) | Quick start, env, Netlify |
 | [`V2_PLAN.md`](V2_PLAN.md) | Original v2 design decisions |
-| [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md) | Visual / UX brief |
+| [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md) | Visual / UX brief (pre-redesign) |
+| [`REDESIGN_DECISIONS.md`](REDESIGN_DECISIONS.md) | What changed in the v2 redesign and why |
+| [`ui-design-patterns.md`](ui-design-patterns.md) | UI standards every change is held to |
+| `challenge 2/` | The Claude Design handoff bundle this redesign implements |
 | [`LEGACY_INDEX_REFERENCE.md`](../LEGACY_INDEX_REFERENCE.md) | Pre-React monolith |
 | [`.env.example`](../.env.example) | Env template (includes legacy vars) |
 
 ---
 
-*Last updated: audited against v2 codebase — removed v1-only features (Google Auth, Sheets, PersonLogCard, scoring.ts, etc.).*
+*Last updated: v2 UI redesign — Home as the landing screen, step-wizard log with
+spendable free passes, editable History, single-page Settings, and a fully
+tokenised theme. See [`REDESIGN_DECISIONS.md`](REDESIGN_DECISIONS.md).*

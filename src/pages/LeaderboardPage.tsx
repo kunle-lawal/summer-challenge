@@ -17,8 +17,6 @@ import {
 
 type Scope = 'all' | 'week';
 
-const ROW_H = 68;
-
 // ---------------------------------------------------------------------------
 // Podium
 // ---------------------------------------------------------------------------
@@ -101,17 +99,17 @@ const PodiumLine = styled.div`
   margin-top: -1px;
 `;
 
-const Standings = styled.div<{ $count: number }>`
-  position: relative;
-  height: ${({ $count }) => $count * ROW_H}px;
-`;
-
-const Slot = styled.div<{ $index: number }>`
-  position: absolute;
-  inset: 0 0 auto 0;
-  transform: translateY(${({ $index }) => $index * ROW_H}px);
-  transition: transform 0.42s ${({ theme }) => theme.ease.out};
-  padding-bottom: 8px;
+/*
+ * The prototype animates rank changes by absolutely positioning each row at
+ * `index * 66px`. That relies on every row being exactly one fixed height, and
+ * at 200% text zoom they aren't — the rows overlap each other. `ui-design-
+ * patterns.md` §13 requires the layout to survive that zoom, so rows are laid
+ * out normally and the reorder is not animated.
+ */
+const Standings = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 `;
 
 const Section = styled.section`
@@ -263,33 +261,31 @@ export function LeaderboardPage() {
             change animates positions instead of reshuffling the list under
             the reader's eyes.
           */}
-          <Standings $count={standings.length}>
-            {[...standings]
-              .sort((a, b) => a.memberId.localeCompare(b.memberId))
-              .map(s => {
-                const index = standings.findIndex(x => x.memberId === s.memberId);
-                const moved = scope === 'week' ? (allTimeRank.get(s.memberId) ?? s.rank) - s.rank : 0;
-                const isYou = s.memberId === selectedMemberId;
-                return (
-                  <Slot key={s.memberId} $index={index}>
-                    <Row as={Link} to={`/c/${challenge.slug}/m/${s.memberId}`} $you={isYou} style={{ minHeight: 60 }}>
-                      <Rank $first={s.rank === 1}>{s.rank}</Rank>
-                      <MemberBadge member={{ name: s.memberName }} isYou={isYou} />
-                      <Name>
-                        <b>{isYou ? 'You' : s.memberName}</b>
-                        <Meta>{s.daysLogged} {s.daysLogged === 1 ? 'day' : 'days'}</Meta>
-                      </Name>
-                      {moved !== 0 && (
-                        <Pill $tone="flat" aria-label={`${moved > 0 ? 'Up' : 'Down'} ${Math.abs(moved)} against all time`}>
-                          <Icon name={moved > 0 ? 'up' : 'down'} style={{ width: 12, height: 12 }} />
-                          {Math.abs(moved)}
-                        </Pill>
-                      )}
-                      <Points>{s.totalPoints.toFixed(1)}</Points>
-                    </Row>
-                  </Slot>
-                );
-              })}
+          <Standings>
+            {standings.map(s => {
+              const moved = scope === 'week' ? (allTimeRank.get(s.memberId) ?? s.rank) - s.rank : 0;
+              const isYou = s.memberId === selectedMemberId;
+              return (
+                <Row key={s.memberId} as={Link} to={`/c/${challenge.slug}/m/${s.memberId}`} $you={isYou}>
+                  <Rank $first={s.rank === 1}>{s.rank}</Rank>
+                  <MemberBadge member={{ name: s.memberName }} isYou={isYou} />
+                  <Name>
+                    <b>{isYou ? 'You' : s.memberName}</b>
+                    <Meta>{s.daysLogged} {s.daysLogged === 1 ? 'day' : 'days'}</Meta>
+                  </Name>
+                  {moved !== 0 && (
+                    <Pill
+                      $tone="flat"
+                      aria-label={`${moved > 0 ? 'Up' : 'Down'} ${Math.abs(moved)} places against all time`}
+                    >
+                      <Icon name={moved > 0 ? 'up' : 'down'} style={{ width: 12, height: 12 }} />
+                      {Math.abs(moved)}
+                    </Pill>
+                  )}
+                  <Points>{s.totalPoints.toFixed(1)}</Points>
+                </Row>
+              );
+            })}
           </Standings>
         </Section>
 
