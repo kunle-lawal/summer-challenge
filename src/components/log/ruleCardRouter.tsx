@@ -3,6 +3,7 @@ import type {
 	Member,
 	Entry,
 	DateString,
+	Challenge,
 } from "@/types";
 import type { EvaluatedRule } from "@/types";
 import type { WeeklySummary } from "@/types";
@@ -17,6 +18,7 @@ import {
 	isTrackerRule,
 } from "@/types";
 import { getWeekWindow } from "@/lib/dates";
+import { getStreakRunAtDate } from "@/lib/rules/streakRun";
 import { BinaryRuleCard } from "./BinaryRuleCard";
 import { CounterRuleCard } from "./CounterRuleCard";
 import { RangeRuleCard } from "./RangeRuleCard";
@@ -36,6 +38,9 @@ interface Props {
 	lockedAt?: string;
 	/** weekAnchor from challenge.config.weekAnchor — drives penalty week window */
 	weekAnchor?: DateString;
+	/** Log date being viewed — streak UI is scoped to this day */
+	asOfDate?: DateString;
+	challenge?: Challenge;
 	onSave: (ruleId: string, value: RawEntryValue) => void;
 	onSetTrackerGoal?: (config: TrackerGoalInput) => Promise<void>;
 }
@@ -49,6 +54,8 @@ export function RuleCardRouter({
 	locked,
 	lockedAt,
 	weekAnchor,
+	asOfDate,
+	challenge,
 	onSave,
 	onSetTrackerGoal,
 }: Props) {
@@ -118,43 +125,20 @@ export function RuleCardRouter({
 	}
 
 	if (isStreakRule(rule)) {
-		// Count consecutive positive days for the referenced rule ending at today
-		// TODO(hook-extension): a getMemberStreak helper would be cleaner
-		const positiveEntries = memberEntries
-			.filter((e) => {
-				const refVal = e.values[rule.ruleRef];
-				return (
-					refVal === "yes" ||
-					refVal === "free" ||
-					refVal === "clean" ||
-					typeof refVal === "number"
-				);
-			})
-			.sort((a, b) => a.date.localeCompare(b.date));
-
-		let streak = 0;
-		for (let i = positiveEntries.length - 1; i >= 0; i--) {
-			const curr = positiveEntries[i];
-			const prev = positiveEntries[i - 1];
-			if (i === positiveEntries.length - 1) {
-				streak = 1;
-				continue;
-			}
-			if (!curr || !prev) break;
-			const diffMs =
-				new Date(curr.date + "T00:00:00Z").getTime() -
-				new Date(prev.date + "T00:00:00Z").getTime();
-			if (diffMs === 86400000) {
-				streak++;
-			} else {
-				break;
-			}
-		}
+		const run =
+			challenge && asOfDate
+				? getStreakRunAtDate(challenge, member, memberEntries, rule, asOfDate)
+				: {
+						runDates: [],
+						count: 0,
+						complete: false,
+						brokenOnDate: false,
+					};
 
 		return (
 			<StreakRuleCard
 				rule={rule}
-				currentStreak={Math.min(streak, rule.daysRequired)}
+				run={run}
 				locked={locked}
 			/>
 		);

@@ -83,20 +83,30 @@ export function compareDates(a: DateString, b: DateString): -1 | 0 | 1 {
 }
 
 // ---------------------------------------------------------------------------
-// Edit window
+// Log date eligibility
 // ---------------------------------------------------------------------------
 
+export interface LogDateBounds {
+  startDate: DateString;
+  endDate: DateString | null;
+}
+
 /**
- * True if `date` is within the edit window: today or yesterday in the
- * challenge timezone. This is the normal-user edit check; owner override
- * is handled at the CRUD layer.
+ * True when `date` can be logged or edited: on or after `startDate`, on or
+ * before today (challenge timezone), and on or before `endDate` when set.
+ * Ended-challenge checks are handled at the CRUD layer.
  */
 export function isWithinEditWindow(
   date: DateString,
   timezone: string,
+  bounds: LogDateBounds,
   now: Date = new Date(),
 ): boolean {
-  return date === todayInTz(timezone, now) || date === yesterdayInTz(timezone, now);
+  const today = todayInTz(timezone, now);
+  if (date < bounds.startDate) return false;
+  if (date > today) return false;
+  if (bounds.endDate !== null && date > bounds.endDate) return false;
+  return true;
 }
 
 /**
