@@ -259,7 +259,7 @@ export async function setTrackerConfig(
 
   appendAuditLog(batch, challengeId, {
     actor,
-    action: 'member.rename', // closest available — future: 'member.tracker_config_set'
+    action: 'member.tracker_config',
     target: { kind: 'member', id: memberId },
     before,
     after: config,

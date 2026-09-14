@@ -20,6 +20,7 @@ export const AUDIT_ACTIONS = [
   'member.remove',
   'member.rename',
   'member.restore',
+  'member.tracker_config',
   'entry.create',
   'entry.update',
   'entry.delete',
