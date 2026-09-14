@@ -202,8 +202,11 @@ export function formatRuleFormula(r: Rule): string {
   switch (r.kind) {
     case 'binary':
       return `yes = ${fmtPts(r.pointsYes)}`;
-    case 'counter':
-      return `${r.target.toLocaleString()} ${r.unit} = ${fmtPts(r.maxPoints)} pts`;
+    case 'counter': {
+      const base = `${r.target.toLocaleString()} ${r.unit} = ${fmtPts(r.maxPoints)} pts`;
+      if ((r.overflow ?? 'cap') !== 'linear') return base;
+      return r.dailyMax != null ? `${base}, up to ${fmtPts(r.dailyMax)}/day` : `${base}, no cap`;
+    }
     case 'range': {
       const { atMin, atMax } = resolveRangePoints(r);
       if (atMin === atMax) {
@@ -268,9 +271,17 @@ export function explainRule(rule: Rule, allRules: readonly Rule[] = []): string 
     }
     case 'counter': {
       parts.push(
-        `Points scale with the count: ${rule.target.toLocaleString()} ${rule.unit} earns the full ${pts(rule.maxPoints)}, and half that earns half the points.`,
+        `Points scale with the count: ${rule.target.toLocaleString()} ${rule.unit} earns ${pts(rule.maxPoints)}, and half that earns half the points.`,
       );
-      parts.push(`Going past the target doesn't add more.`);
+      if ((rule.overflow ?? 'cap') === 'linear') {
+        parts.push(
+          rule.dailyMax != null
+            ? `Going past the target keeps paying at the same rate, up to ${pts(rule.dailyMax)} in a single day.`
+            : `Going past the target keeps paying at the same rate, with no daily limit — twice the target is twice the points.`,
+        );
+      } else {
+        parts.push(`Going past the target doesn't add more.`);
+      }
       break;
     }
     case 'range': {

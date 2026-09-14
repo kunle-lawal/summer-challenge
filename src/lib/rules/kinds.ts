@@ -234,6 +234,9 @@ export function maxDailyPoints(rule: Rule): number {
     case 'binary':
       return Math.max(rule.pointsYes, rule.pointsFree);
     case 'counter':
+      // Deliberately the points at target, not the day's ceiling. On a rule
+      // that keeps paying past the target, a streak wanting "full credit"
+      // means "hit the target" — an unbounded lid would be unsatisfiable.
       return rule.maxPoints;
     case 'range':
       return Math.max(rule.pointsAtMin, rule.pointsAtMax);

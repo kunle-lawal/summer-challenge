@@ -159,6 +159,26 @@ have shown a run the board refused to pay for.
 The rule editor now warns when a streak watches a counter on `'positive'`, and
 when it watches a capped binary at all.
 
+## Counters that keep paying past the target
+
+`CounterRule.overflow` is `'cap'` (default, and what every existing counter
+keeps doing) or `'linear'`, where points carry on scaling at the same rate —
+double the target is double the points. `dailyMax` puts a lid on a single day;
+null means none at all.
+
+Two interactions worth knowing:
+
+- **`maxDailyPoints` still returns the points at target**, not the day's
+  ceiling. A streak wanting `qualifier: 'full'` therefore still means "hit the
+  target" — against an unbounded counter, anything else would be unsatisfiable,
+  because there is no highest day.
+- **No shipped template uses it.** An overflow counter's ceiling sits far above
+  what anyone would realistically do every day, so it blows the
+  no-rule-past-a-quarter budget by construction. That is the point of the
+  option, not a flaw in it — but it makes it a tool for a custom challenge
+  rather than something to bake into a balanced one. There's a test enforcing
+  that templates stay bounded.
+
 ## Challenge templates
 
 `src/lib/rules/templates.ts` replaces the create screen's three-way preset

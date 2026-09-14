@@ -384,7 +384,9 @@ export function CreateChallengePage() {
                           <Meta>{t.tagline}</Meta>
                           {ceiling > 0 && (
                             <Facts>
-                              <Pill $tone="flat">{ceiling} pts if perfect</Pill>
+                              <Pill $tone="flat">
+                                {Number.isFinite(ceiling) ? `${ceiling} pts if perfect` : 'No points ceiling'}
+                              </Pill>
                               {passes && <Pill $tone="flat">{passes}</Pill>}
                               <Pill $tone="flat">{t.forgiveness}</Pill>
                             </Facts>

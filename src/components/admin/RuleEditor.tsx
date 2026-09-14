@@ -233,7 +233,8 @@ export function RuleEditor({ rule, allRules, onSave, onDelete, onClose, live }: 
           </>
         );
 
-      case 'counter':
+      case 'counter': {
+        const overflow = draft.overflow ?? 'cap';
         return (
           <>
             <Label>Scoring</Label>
@@ -248,9 +249,51 @@ export function RuleEditor({ rule, allRules, onSave, onDelete, onClose, live }: 
               </Field>
               <NumField id="r-dec" label="Decimals" min={0} value={draft.decimals} onChange={n => set('decimals', Math.max(0, Math.round(n)))} />
             </Grid>
-            <Hint>Points scale with the count — half the target earns half the points.</Hint>
+
+            <Label>Beating the target</Label>
+            <Choices role="group" aria-label="Beating the target">
+              <Choice type="button" aria-pressed={overflow === 'cap'} onClick={() => set('overflow', 'cap')}>
+                Stops there
+                <small>Target is the most</small>
+              </Choice>
+              <Choice type="button" aria-pressed={overflow === 'linear'} onClick={() => set('overflow', 'linear')}>
+                Keeps paying
+                <small>Double it, double the points</small>
+              </Choice>
+            </Choices>
+
+            {overflow === 'linear' && (
+              <>
+                <NumField
+                  id="r-daily-max"
+                  label="Most in one day (0 for no limit)"
+                  min={0}
+                  step="0.5"
+                  value={draft.dailyMax ?? 0}
+                  onChange={n => set('dailyMax', n > 0 ? n : null)}
+                />
+                {draft.dailyMax == null ? (
+                  <ErrorText role="alert">
+                    With no limit, one enormous day can outscore a whole week of everyone else.
+                    That may be exactly what you want — just know it before you start.
+                  </ErrorText>
+                ) : (
+                  <Hint>
+                    {(draft.dailyMax / draft.maxPoints).toFixed(1)}× the target is the most a
+                    single day can earn.
+                  </Hint>
+                )}
+              </>
+            )}
+
+            <Hint>
+              {overflow === 'linear'
+                ? `Every ${draft.target.toLocaleString()} ${draft.unit} is worth ${draft.maxPoints} points, however many you do.`
+                : 'Points scale up to the target and stop — half the target earns half the points.'}
+            </Hint>
           </>
         );
+      }
 
       case 'range':
         return (

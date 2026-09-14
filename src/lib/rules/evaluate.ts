@@ -184,13 +184,30 @@ function evalCounter(rule: CounterRule, entry: Entry): EvaluatedRule {
     return { ruleId: rule.id, rawValue: null, points: 0 };
   }
 
-  const pts = Math.min(rule.maxPoints, (rawValue / rule.target) * rule.maxPoints);
-  const notes: string[] = [];
+  const scaled = rule.target > 0 ? (rawValue / rule.target) * rule.maxPoints : 0;
+  const overflow = rule.overflow ?? 'cap';
 
+  let pts: number;
+  if (overflow === 'cap') {
+    pts = Math.min(rule.maxPoints, scaled);
+  } else {
+    // 'linear': keeps paying past the target, bounded only by dailyMax.
+    pts = rule.dailyMax != null ? Math.min(rule.dailyMax, scaled) : scaled;
+  }
+
+  const notes: string[] = [];
   if (rawValue >= rule.target) {
-    notes.push(`${rawValue} ${rule.unit} — target hit`);
+    notes.push(
+      overflow === 'linear' && rawValue > rule.target
+        ? `${rawValue} ${rule.unit} — ${(rawValue / rule.target).toFixed(1)}× the target`
+        : `${rawValue} ${rule.unit} — target hit`,
+    );
   } else {
     notes.push(`${rawValue}/${rule.target} ${rule.unit}`);
+  }
+
+  if (overflow === 'linear' && rule.dailyMax != null && scaled > rule.dailyMax) {
+    notes.push(`capped at ${rule.dailyMax} for one day`);
   }
 
   return { ruleId: rule.id, rawValue, points: pts, notes };
