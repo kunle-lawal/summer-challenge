@@ -46,7 +46,19 @@ function ChallengeLoadWrapper() {
 
 	return (
 		<SelectedMemberProvider slug={challenge.slug} activeMembers={activeMembers}>
-			<Outlet />
+			{/*
+			 * Admin mode wraps the whole challenge, not just /admin, so owner-only
+			 * controls (removing a member from their profile, for instance) can
+			 * appear wherever they belong. Unlocking still happens once, on the
+			 * settings screen, and still lasts only for this tab.
+			 */}
+			<AdminModeProvider
+				challengeId={challenge.id}
+				ownerPasswordHash={challenge.ownerPasswordHash}
+				ownerPasswordSalt={challenge.ownerPasswordSalt}
+			>
+				<Outlet />
+			</AdminModeProvider>
 		</SelectedMemberProvider>
 	);
 }
@@ -54,21 +66,6 @@ function ChallengeLoadWrapper() {
 /** Layout wrapper used as a pathless route to add BottomNav to all chrome pages. */
 function ChromeLayout() {
 	return <Layout />;
-}
-
-// ── Admin layout (wraps admin sub-routes with AdminModeProvider) ──────────────
-
-function AdminLayout() {
-	const { challenge } = useChallenge();
-	return (
-		<AdminModeProvider
-			challengeId={challenge?.id}
-			ownerPasswordHash={challenge?.ownerPasswordHash}
-			ownerPasswordSalt={challenge?.ownerPasswordSalt}
-		>
-			<Outlet />
-		</AdminModeProvider>
-	);
 }
 
 // ── Per-route error boundary ──────────────────────────────────────────────────
@@ -166,9 +163,7 @@ export function App() {
 					<Route path="history" element={<RouteEB><HistoryPage /></RouteEB>} />
 					<Route path="m/:memberId" element={<RouteEB><MemberProfilePage /></RouteEB>} />
 					<Route path="rules" element={<RouteEB><RulesReferencePage /></RouteEB>} />
-					<Route path="admin" element={<AdminLayout />}>
-						<Route index element={<RouteEB><AdminPage /></RouteEB>} />
-					</Route>
+					<Route path="admin" element={<RouteEB><AdminPage /></RouteEB>} />
 				</Route>
 			</Route>
 

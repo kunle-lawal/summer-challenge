@@ -36,14 +36,31 @@ import { evaluateEntry } from './evaluate';
  * Inactive members can be passed in — callers (buildLeaderboard) are
  * responsible for filtering them out before adding to standings.
  */
+/**
+ * Optional window for "points earned between these dates".
+ *
+ * Scoring still sees the member's whole history — weekly caps, penalty
+ * waivers and streak runs all depend on days outside the window — but only
+ * points dated inside it are added up. Filtering the entries before they reach
+ * the evaluator would silently change how they score.
+ */
+export interface DateRange {
+  start: DateString;
+  end: DateString;
+}
+
 export function aggregateMember(
   challenge: Challenge,
   member: Member,
   memberEntries: Entry[],
+  range?: DateRange,
 ): MemberStanding {
   if (memberEntries.length === 0) {
     return emptyStanding(member, challenge.config.rules);
   }
+
+  const inRange = (date: DateString) =>
+    range === undefined || (date >= range.start && date <= range.end);
 
   // Sort entries ascending by date for deterministic processing.
   const sorted = [...memberEntries].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
@@ -83,6 +100,8 @@ export function aggregateMember(
   const perRule: Record<string, number> = {};
 
   for (const evalEntry of evaluated) {
+    if (!inRange(evalEntry.date)) continue;
+
     for (const [ruleId, evalRule] of Object.entries(evalEntry.perRule)) {
       // Tracker rule: only credit the latest logged entry.
       if (trackerRuleIds.has(ruleId)) {
@@ -109,7 +128,7 @@ export function aggregateMember(
     memberId: member.id,
     memberName: member.name,
     totalPoints,
-    daysLogged: memberEntries.length,
+    daysLogged: range ? memberEntries.filter(e => inRange(e.date)).length : memberEntries.length,
     perRule,
     rank: 0, // assigned by buildLeaderboard
   };
@@ -127,6 +146,7 @@ export function buildLeaderboard(
   challenge: Challenge,
   members: Member[],
   allEntries: Entry[],
+  range?: DateRange,
 ): Leaderboard {
   const activeMembers = members.filter(m => m.active);
 
@@ -141,7 +161,7 @@ export function buildLeaderboard(
   // Compute standings for each active member.
   const standings = activeMembers.map(member => {
     const memberEntries = entriesByMember.get(member.id) ?? [];
-    return aggregateMember(challenge, member, memberEntries);
+    return aggregateMember(challenge, member, memberEntries, range);
   });
 
   // Sort: highest points first. Ties keep insertion order (stable).

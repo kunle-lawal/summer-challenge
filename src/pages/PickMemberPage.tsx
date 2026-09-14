@@ -1,188 +1,130 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
+import { getWeekNumber, todayInTz } from '@/lib/dates';
+import { Body, Screen } from '@/components/layout/Screen';
+import { EmptyState } from '@/components/ui/feedback';
+import { Icon } from '@/components/ui/Icons';
 import { MemberBadge } from '@/components/ui/MemberBadge';
-import { XIcon, ChevRightIcon } from '@/components/ui/Icons';
+import { List, Meta, Name, Pill, Row } from '@/components/ui/primitives';
 
-const Page = styled.div`
-  height: 100%;
-  background: ${({ theme }) => theme.color.bg};
+/**
+ * Who's using this device. Full screen, no tab bar — nothing else is reachable
+ * until a name is picked, because every other screen is personal.
+ *
+ * This is an honour system, not authentication: anyone with the link can pick
+ * any name. See APP_REFERENCE "Identity & trust model".
+ */
+
+const Pane = styled.div`
+  flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 18px;
+  padding: 28px 20px calc(32px + env(safe-area-inset-bottom, 0px));
+
+  h1 { font-size: 28px; line-height: 35px; }
 `;
 
-const TopBar = styled.div`
+const Top = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  gap: 12px;
 `;
 
-const Pill = styled.span`
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border-radius: ${({ theme }) => theme.radii.pill};
-  border: 1px solid ${({ theme }) => theme.color.hair2};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+const Sub = styled.p`
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 500;
   color: ${({ theme }) => theme.color.ink2};
 `;
 
-const IconBtn = styled.button`
-  width: 36px; height: 36px;
-  border-radius: ${({ theme }) => theme.radii.md};
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: ${({ theme }) => theme.color.ink};
-  svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.6; fill: none; }
-`;
-
-const Body = styled.div`
-  flex: 1;
-  padding: 32px 24px 40px;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-`;
-
-const Title = styled.h1`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 34px;
-  font-weight: 400;
-  line-height: 1;
-  color: ${({ theme }) => theme.color.ink};
-  em { font-style: italic; }
-`;
-
-const Subtitle = styled.p`
-  font-size: 12.5px;
+const Foot = styled.p`
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
   color: ${({ theme }) => theme.color.ink3};
-  margin-top: 8px;
-`;
-
-const List = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 28px;
-`;
-
-const MemberBtn = styled.button`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  border-radius: ${({ theme }) => theme.radii.md};
-  cursor: pointer;
-  text-align: left;
-  width: 100%;
-  transition: background 0.1s, transform 0.1s;
-  &:hover { background: ${({ theme }) => theme.color.surface2}; }
-  &:active { transform: scale(0.99); }
-`;
-
-const MemberName = styled.span`
-  font-weight: 600;
-  font-size: 16px;
-  color: ${({ theme }) => theme.color.ink};
-`;
-
-const MemberMeta = styled.span`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  color: ${({ theme }) => theme.color.ink3};
-  letter-spacing: 0.04em;
-  margin-top: 2px;
-`;
-
-const Grow = styled.div`
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-`;
-
-const ChevIcon = styled.span`
-  svg { width: 16px; height: 16px; stroke: ${({ theme }) => theme.color.ink3}; stroke-width: 1.6; fill: none; }
-`;
-
-const EmptyMsg = styled.p`
-  font-size: 13.5px;
-  color: ${({ theme }) => theme.color.ink3};
-  text-align: center;
-  padding: 32px 0;
-`;
-
-const FootNote = styled.p`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 11px;
-  color: ${({ theme }) => theme.color.ink3};
-  margin-top: 24px;
-  line-height: 1.5;
-  font-style: italic;
+  margin-top: auto;
 `;
 
 export function PickMemberPage() {
+  const { challenge, activeMembers, entries } = useChallenge();
+  const { selectedMemberId, setSelectedMemberId } = useSelectedMember();
   const navigate = useNavigate();
-  const { slug } = useParams<{ slug: string }>();
-  const { challenge, activeMembers } = useChallenge();
-  const { setSelectedMemberId, selectedMemberId } = useSelectedMember();
 
-  const handlePick = (memberId: string) => {
-    setSelectedMemberId(memberId);
-    navigate(`/c/${slug}`);
+  const daysByMember = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of entries) counts.set(e.memberId, (counts.get(e.memberId) ?? 0) + 1);
+    return counts;
+  }, [entries]);
+
+  if (!challenge) return null;
+
+  const week = Math.max(1, getWeekNumber(todayInTz(challenge.config.timezone), challenge.config.weekAnchor));
+
+  const choose = (id: string) => {
+    setSelectedMemberId(id);
+    navigate(`/c/${challenge.slug}`, { replace: true });
   };
 
-  const handleClose = () => {
-    if (window.history.length > 1) navigate(-1);
-    else navigate(`/c/${slug}`);
-  };
+  if (activeMembers.length === 0) {
+    return (
+      <Screen>
+        <Body>
+          <EmptyState
+            title="No one on the roster yet"
+            body="This challenge has no members. Whoever set it up needs to add names in settings before anyone can log."
+            action={{ label: 'Open settings', onClick: () => navigate(`/c/${challenge.slug}/admin`) }}
+          />
+        </Body>
+      </Screen>
+    );
+  }
 
   return (
-    <Page>
-      <TopBar>
-        <Pill>{challenge?.name ?? '…'}</Pill>
-        <IconBtn onClick={handleClose} aria-label="Close">
-          <XIcon />
-        </IconBtn>
-      </TopBar>
-
+    <Screen>
       <Body>
-        <Title>Who's <em>logging in?</em></Title>
-        <Subtitle>This stays saved on this device.</Subtitle>
+        <Pane>
+          <Top>
+            <Pill>{challenge.name}</Pill>
+            <Meta>Week {week}</Meta>
+          </Top>
 
-        <List>
-          {activeMembers.length === 0 && (
-            <EmptyMsg>No members yet. Ask the owner to add you.</EmptyMsg>
-          )}
-          {activeMembers.map(m => (
-            <MemberBtn key={m.id} onClick={() => handlePick(m.id)}>
-              <MemberBadge member={m} size="lg" />
-              <Grow>
-                <MemberName>{m.name}</MemberName>
-                {selectedMemberId === m.id && (
-                  <MemberMeta>Currently selected</MemberMeta>
-                )}
-              </Grow>
-              <ChevIcon><ChevRightIcon /></ChevIcon>
-            </MemberBtn>
-          ))}
-        </List>
+          <div>
+            <h1>Who’s logging in?</h1>
+            <Sub>Pick yourself to start logging. You can switch any time from the header.</Sub>
+          </div>
 
-        <FootNote>Not on the list? Ask the owner to add you.</FootNote>
+          <List>
+            {activeMembers.map(m => {
+              const days = daysByMember.get(m.id) ?? 0;
+              const current = m.id === selectedMemberId;
+              return (
+                <Row as="button" type="button" key={m.id} $you={current} onClick={() => choose(m.id)}>
+                  <MemberBadge member={m} size="lg" />
+                  <Name>
+                    <b>{m.name}</b>
+                    <Meta>
+                      {[
+                        current ? 'This device' : null,
+                        days > 0 ? `${days} ${days === 1 ? 'day' : 'days'} logged` : 'Nothing logged yet',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Meta>
+                  </Name>
+                  <Icon name="next" />
+                </Row>
+              );
+            })}
+          </List>
+
+          <Foot>Not on the list? Ask whoever set the challenge up to add you.</Foot>
+        </Pane>
       </Body>
-    </Page>
+    </Screen>
   );
 }

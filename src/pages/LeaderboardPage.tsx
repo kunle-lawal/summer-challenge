@@ -1,376 +1,304 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
-import { buildLeaderboard } from '@/lib/rules/aggregate';
-import { MemberBadge } from '@/components/ui/MemberBadge';
 import type { MemberStanding } from '@/types';
+import { getWeekNumber, getWeekWindow, todayInTz } from '@/lib/dates';
+import { buildLeaderboard } from '@/lib/rules/aggregate';
+import { Body, Sheet, TopBar } from '@/components/layout/Screen';
+import { EmptyState } from '@/components/ui/feedback';
+import { Icon } from '@/components/ui/Icons';
+import { MemberBadge } from '@/components/ui/MemberBadge';
+import {
+  IconButton, Label, Meta, Name, Pill, Points, Rank, Row,
+  Segmented, Skeleton, tnum,
+} from '@/components/ui/primitives';
 
-// ── Styled components ─────────────────────────────────────────────────────────
+type Scope = 'all' | 'week';
 
-const SHeader = styled.header`
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid ${({ theme }) => theme.color.hair};
-`;
+const ROW_H = 68;
 
-const Eyebrow = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-`;
-
-const Title = styled.h1`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 30px;
-  font-weight: 400;
-  margin-top: 2px;
-  em { font-style: italic; }
-`;
-
-const Sub = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  color: ${({ theme }) => theme.color.ink3};
-  letter-spacing: 0.04em;
-  margin-top: 2px;
-`;
-
-const Body = styled.div`
-  padding: 0 16px 24px;
-`;
-
-const SegRow = styled.div`
-  margin: 14px 0;
-`;
-
-const Segs = styled.div`
-  display: inline-flex;
-  padding: 3px;
-  background: ${({ theme }) => theme.color.bg2};
-  border-radius: ${({ theme }) => theme.radii.pill};
-  gap: 2px;
-`;
-
-const SegBtn = styled.button<{ $active: boolean }>`
-  border: 0;
-  background: ${({ theme, $active }) => $active ? theme.color.surface : 'transparent'};
-  font: 500 12.5px/1 ${({ theme }) => theme.font.body};
-  color: ${({ theme, $active }) => $active ? theme.color.ink : theme.color.ink2};
-  padding: 7px 14px;
-  border-radius: ${({ theme }) => theme.radii.pill};
-  cursor: pointer;
-  box-shadow: ${({ $active }) => $active ? '0 1px 2px rgba(24,23,15,0.06)' : 'none'};
-  white-space: nowrap;
-`;
+// ---------------------------------------------------------------------------
+// Podium
+// ---------------------------------------------------------------------------
 
 const Podium = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  align-items: flex-end;
-  gap: 6px;
-  padding: 16px 4px 0;
-`;
-
-const PodiumCol = styled.div<{ $rank: number }>`
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-`;
-
-const PodiumName = styled.div`
-  font-weight: 600;
-  font-size: 13px;
-  text-align: center;
+  align-items: flex-end;
+  gap: 8px;
   margin-top: 4px;
 `;
 
-const PodiumPts = styled.div`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 22px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  font-style: italic;
-`;
-
-const PodiumBlock = styled.div<{ $height: number; $rank: number }>`
-  width: 100%;
-  height: ${({ $height }) => $height}px;
-  background: ${({ theme, $rank }) => $rank === 1 ? theme.color.accentTint : theme.color.surface2};
-  border: 1px solid ${({ theme, $rank }) => $rank === 1 ? theme.color.accent : theme.color.hair};
-  border-bottom: 0;
-  border-radius: ${({ theme }) => theme.radii.md} ${({ theme }) => theme.radii.md} 0 0;
-  margin-top: 6px;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: 8px;
-`;
-
-const PodiumRank = styled.span<{ $rank: number }>`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 36px;
-  line-height: 1;
-  font-style: italic;
-  font-variant-numeric: tabular-nums;
-  color: ${({ theme, $rank }) => $rank === 1 ? theme.color.accent : theme.color.ink3};
-`;
-
-const SectionLbl = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-  padding: 18px 0 10px;
-`;
-
-const Card = styled.div`
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.hair};
-  border-radius: ${({ theme }) => theme.radii.md};
-  overflow: hidden;
-`;
-
-const LbRow = styled.div<{ $isYou: boolean; $rank: number }>`
-  display: grid;
-  grid-template-columns: 28px 36px 1fr auto;
-  gap: 12px;
-  align-items: center;
-  padding: 14px 12px;
-  border-bottom: 1px solid ${({ theme }) => theme.color.hair};
-  background: ${({ theme, $isYou }) => $isYou ? theme.color.accentTint : 'transparent'};
-  cursor: pointer;
-  &:last-child { border-bottom: 0; }
-`;
-
-const Rank = styled.span<{ $rank: number }>`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 22px;
-  font-variant-numeric: tabular-nums;
-  font-style: ${({ $rank }) => $rank <= 3 ? 'normal' : 'italic'};
-  color: ${({ theme, $rank }) => $rank === 1 ? theme.color.accent : theme.color.ink3};
-  text-align: center;
-`;
-
-const MemberInfo = styled.div`flex: 1; min-width: 0;`;
-
-const Name = styled.div`font-weight: 600; font-size: 14px;`;
-
-const SubLine = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-  margin-top: 3px;
-`;
-
-const Pts = styled.div`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 22px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-`;
-
-const Expand = styled.div`
-  margin-top: 10px;
+const Plinth = styled(Link)<{ $place: 1 | 2 | 3 }>`
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-decoration: none;
+  color: inherit;
+  font-weight: 400;
+
+  &:hover { text-decoration: none; color: inherit; }
+
+  > .who {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    width: 100%;
+
+    b {
+      font-weight: 600;
+      font-size: 13px;
+      line-height: 18px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sc {
+      font-family: ${({ theme }) => theme.font.display};
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.02em;
+      ${tnum}
+    }
+  }
+
+  > .blk {
+    width: 100%;
+    border: 1px solid ${({ theme, $place }) => ($place === 1 ? theme.color.accentLine : theme.color.hair)};
+    border-bottom: 0;
+    border-radius: ${({ theme }) => theme.radii.md} ${({ theme }) => theme.radii.md} 0 0;
+    background: ${({ theme, $place }) => ($place === 1 ? theme.color.accentSoft : theme.color.surface)};
+    color: ${({ theme, $place }) => ($place === 1 ? theme.color.accent : theme.color.ink3)};
+    display: grid;
+    place-items: center;
+    font-family: ${({ theme }) => theme.font.display};
+    font-weight: 600;
+    font-size: ${({ $place }) => ($place === 1 ? '30px' : '26px')};
+    height: ${({ $place }) => ($place === 1 ? '96px' : $place === 2 ? '70px' : '54px')};
+    transition: height 0.5s ${({ theme }) => theme.ease.out}, background 0.16s;
+    ${tnum}
+  }
+
+  &:hover > .blk {
+    background: ${({ theme, $place }) => ($place === 1 ? '#f8e0d6' : theme.color.surface2)};
+  }
 `;
 
-const BarRow = styled.div`
+const PodiumLine = styled.div`
+  height: 1px;
+  background: ${({ theme }) => theme.color.hair};
+  margin-top: -1px;
+`;
+
+const Standings = styled.div<{ $count: number }>`
+  position: relative;
+  height: ${({ $count }) => $count * ROW_H}px;
+`;
+
+const Slot = styled.div<{ $index: number }>`
+  position: absolute;
+  inset: 0 0 auto 0;
+  transform: translateY(${({ $index }) => $index * ROW_H}px);
+  transition: transform 0.42s ${({ theme }) => theme.ease.out};
+  padding-bottom: 8px;
+`;
+
+const Section = styled.section`
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 `;
 
-const BarLabel = styled.span`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
-  width: 56px;
-`;
-
-const Bar = styled.div`
-  flex: 1;
-  height: 6px;
-  background: ${({ theme }) => theme.color.bg2};
-  border-radius: ${({ theme }) => theme.radii.pill};
-  overflow: hidden;
-`;
-
-const BarFill = styled.div<{ $width: number; $negative: boolean }>`
-  height: 100%;
-  width: ${({ $width }) => Math.min(100, $width)}%;
-  background: ${({ theme, $negative }) => $negative ? theme.color.bad : theme.color.ink};
-  border-radius: ${({ theme }) => theme.radii.pill};
-`;
-
-const BarVal = styled.span`
-  font-family: ${({ theme }) => theme.font.display};
-  font-size: 14px;
-  width: 40px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-`;
-
-const FootNote = styled.p`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 11px;
-  color: ${({ theme }) => theme.color.ink3};
-  padding: 16px 4px 0;
-  line-height: 1.5;
-`;
-
-const EmptyState = styled.div`
-  text-align: center;
-  padding: 40px 24px;
-  color: ${({ theme }) => theme.color.ink3};
-  font-size: 13.5px;
-`;
-
-// ── Component ─────────────────────────────────────────────────────────────────
-
-type ViewMode = 'total' | 'perrule' | 'avgday';
+// ---------------------------------------------------------------------------
 
 export function LeaderboardPage() {
-  const navigate = useNavigate();
-  const { slug } = useParams<{ slug: string }>();
-  const { challenge, activeMembers, entries } = useChallenge();
+  const { challenge, members, entries, activeMembers, loading, error } = useChallenge();
   const { selectedMemberId } = useSelectedMember();
-  const [view, setView] = useState<ViewMode>('total');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const [scope, setScope] = useState<Scope>('all');
+
+  const data = useMemo(() => {
+    if (!challenge) return null;
+    const { timezone, weekAnchor } = challenge.config;
+    const today = todayInTz(timezone);
+    const week = getWeekWindow(today, weekAnchor);
+
+    const all = buildLeaderboard(challenge, members, entries);
+    const scoped = scope === 'week'
+      ? buildLeaderboard(challenge, members, entries, week)
+      : all;
+
+    // Where each member sits on the all-time board, so the weekly view can
+    // show which way they've moved.
+    const allTimeRank = new Map(all.standings.map(s => [s.memberId, s.rank]));
+
+    return {
+      today,
+      week,
+      weekNumber: Math.max(1, getWeekNumber(today, weekAnchor)),
+      standings: scoped.standings,
+      allTimeRank,
+      hasAnyEntries: all.totalEntries > 0,
+    };
+  }, [challenge, members, entries, scope]);
 
   if (!challenge) return null;
 
-  const board = buildLeaderboard(challenge, activeMembers, entries);
-  const { standings } = board;
-  const podium = [standings[1], standings[0], standings[2]]; // 2nd, 1st, 3rd
-  const rest = standings.slice(3);
+  const back = (
+    <IconButton type="button" aria-label="Back" onClick={() => navigate(`/c/${challenge.slug}`)}>
+      <Icon name="back" />
+    </IconButton>
+  );
 
-  const rules = challenge.config.rules.filter(r => r.kind !== 'streak');
-  const maxPts = standings[0]?.totalPoints ?? 1;
-
-  function getSubLine(s: MemberStanding): string {
-    if (view === 'total') return `${s.daysLogged} days logged`;
-    if (view === 'perrule') {
-      return rules.slice(0, 3).map(r => `${r.name} ${(s.perRule[r.id] ?? 0).toFixed(0)}`).join(' · ');
-    }
-    if (s.daysLogged === 0) return '0/day';
-    return `${(s.totalPoints / s.daysLogged).toFixed(2)}/day · ${s.daysLogged} days`;
+  if (loading) {
+    return (
+      <Body>
+        <TopBar center title="Leaderboard" left={back} />
+        <Sheet>
+          <Skeleton $h={52} />
+          {activeMembers.map((m, i) => (
+            <Skeleton key={m.id} $h={60} style={{ animationDelay: `${i * 90}ms` }} />
+          ))}
+        </Sheet>
+      </Body>
+    );
   }
 
-  function getDisplayPts(s: MemberStanding): string {
-    if (view === 'avgday' && s.daysLogged > 0) {
-      return (s.totalPoints / s.daysLogged).toFixed(2);
-    }
-    return s.totalPoints.toFixed(1);
+  if (error) {
+    return (
+      <Body>
+        <TopBar center title="Leaderboard" left={back} />
+        <EmptyState
+          title="Scores didn’t load"
+          body={error}
+          action={{ label: 'Try again', onClick: () => window.location.reload() }}
+        />
+      </Body>
+    );
   }
 
-  const weekNum = Math.max(1, Math.floor(
-    (new Date().getTime() - new Date(challenge.config.weekAnchor + 'T00:00:00Z').getTime()) / (7 * 86400000)
-  ) + 1);
+  if (!data) return null;
+  const { standings, allTimeRank, weekNumber, hasAnyEntries } = data;
+
+  if (!hasAnyEntries) {
+    return (
+      <Body>
+        <TopBar center title="Leaderboard" sub={`${activeMembers.length} people`} left={back} />
+        <EmptyState
+          title="Nothing logged yet"
+          body="As soon as someone logs a day, the standings show up here."
+          action={{ label: 'Log today', onClick: () => navigate(`/c/${challenge.slug}/log`) }}
+        />
+      </Body>
+    );
+  }
+
+  const podium = standings.slice(0, 3);
+  const podiumOrder: (MemberStanding | undefined)[] = [podium[1], podium[0], podium[2]];
 
   return (
-    <>
-      <SHeader>
-        <Eyebrow>{challenge.name} · Week {weekNum}</Eyebrow>
-        <Title>Lead<em>er</em>board</Title>
-        <Sub>{activeMembers.length} active · {board.totalEntries} entries</Sub>
-      </SHeader>
+    <Body>
+      <TopBar
+        center
+        title="Leaderboard"
+        sub={`${activeMembers.length} ${activeMembers.length === 1 ? 'person' : 'people'} · week ${weekNumber}`}
+        left={back}
+      />
+      <Sheet>
+        <Segmented role="group" aria-label="Score range">
+          <button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>
+            All time
+          </button>
+          <button type="button" aria-pressed={scope === 'week'} onClick={() => setScope('week')}>
+            This week
+          </button>
+        </Segmented>
 
-      <Body>
-        <SegRow>
-          <Segs>
-            {(['total', 'perrule', 'avgday'] as ViewMode[]).map(v => (
-              <SegBtn key={v} $active={view === v} onClick={() => setView(v)}>
-                {v === 'total' ? 'Total' : v === 'perrule' ? 'Per rule' : 'Avg/day'}
-              </SegBtn>
-            ))}
-          </Segs>
-        </SegRow>
-
-        {/* Podium */}
-        {standings.length > 0 && (
-          <Podium>
-            {podium.map((s, i) => {
-              if (!s) return <div key={i} />;
-              const heights = [86, 104, 72];
-              const realRank = [2, 1, 3][i] ?? 1;
-              return (
-                <PodiumCol key={s.memberId} $rank={realRank}>
-                  <MemberBadge member={{ name: s.memberName }} isYou={s.memberId === selectedMemberId} size={realRank === 1 ? 'lg' : 'md'} />
-                  <PodiumName>{s.memberName}</PodiumName>
-                  <PodiumPts>{s.totalPoints.toFixed(1)}</PodiumPts>
-                  <PodiumBlock $height={heights[i] ?? 72} $rank={realRank}>
-                    <PodiumRank $rank={realRank}>{realRank}</PodiumRank>
-                  </PodiumBlock>
-                </PodiumCol>
-              );
-            })}
-          </Podium>
+        {standings.length > 2 && (
+          <div>
+            <Podium>
+              {podiumOrder.map((s, k) => {
+                if (!s) return null;
+                const place = (k === 0 ? 2 : k === 1 ? 1 : 3) as 1 | 2 | 3;
+                return (
+                  <Plinth
+                    key={s.memberId}
+                    to={`/c/${challenge.slug}/m/${s.memberId}`}
+                    $place={place}
+                    aria-label={`${s.memberName}, place ${place}, ${s.totalPoints.toFixed(1)} points`}
+                  >
+                    <span className="who">
+                      <MemberBadge
+                        member={{ name: s.memberName }}
+                        size={place === 1 ? 'lg' : 'md'}
+                        isYou={s.memberId === selectedMemberId}
+                      />
+                      <b>{s.memberName}</b>
+                      <span className="sc">{s.totalPoints.toFixed(1)}</span>
+                    </span>
+                    <span className="blk">{place}</span>
+                  </Plinth>
+                );
+              })}
+            </Podium>
+            <PodiumLine />
+          </div>
         )}
 
-        <SectionLbl>Standings</SectionLbl>
+        <Section>
+          <Label as="h2">Standings</Label>
+          {/*
+            Rows keep a stable DOM order and move by transform, so a scope
+            change animates positions instead of reshuffling the list under
+            the reader's eyes.
+          */}
+          <Standings $count={standings.length}>
+            {[...standings]
+              .sort((a, b) => a.memberId.localeCompare(b.memberId))
+              .map(s => {
+                const index = standings.findIndex(x => x.memberId === s.memberId);
+                const moved = scope === 'week' ? (allTimeRank.get(s.memberId) ?? s.rank) - s.rank : 0;
+                const isYou = s.memberId === selectedMemberId;
+                return (
+                  <Slot key={s.memberId} $index={index}>
+                    <Row as={Link} to={`/c/${challenge.slug}/m/${s.memberId}`} $you={isYou} style={{ minHeight: 60 }}>
+                      <Rank $first={s.rank === 1}>{s.rank}</Rank>
+                      <MemberBadge member={{ name: s.memberName }} isYou={isYou} />
+                      <Name>
+                        <b>{isYou ? 'You' : s.memberName}</b>
+                        <Meta>{s.daysLogged} {s.daysLogged === 1 ? 'day' : 'days'}</Meta>
+                      </Name>
+                      {moved !== 0 && (
+                        <Pill $tone="flat" aria-label={`${moved > 0 ? 'Up' : 'Down'} ${Math.abs(moved)} against all time`}>
+                          <Icon name={moved > 0 ? 'up' : 'down'} style={{ width: 12, height: 12 }} />
+                          {Math.abs(moved)}
+                        </Pill>
+                      )}
+                      <Points>{s.totalPoints.toFixed(1)}</Points>
+                    </Row>
+                  </Slot>
+                );
+              })}
+          </Standings>
+        </Section>
 
-        <Card>
-          {standings.length === 0 && <EmptyState>No entries yet. Start logging!</EmptyState>}
-          {standings.map(s => {
-            const isExp = expanded === s.memberId;
-            return (
-              <div key={s.memberId}>
-                <LbRow
-                  $isYou={s.memberId === selectedMemberId}
-                  $rank={s.rank}
-                  onClick={() => {
-                    setExpanded(isExp ? null : s.memberId);
-                    navigate(`/c/${slug}/m/${s.memberId}`);
-                  }}
-                >
-                  <Rank $rank={s.rank}>{s.rank}</Rank>
-                  <MemberBadge member={{ name: s.memberName }} isYou={s.memberId === selectedMemberId} />
-                  <MemberInfo>
-                    <Name>{s.memberName}</Name>
-                    <SubLine>{getSubLine(s)}</SubLine>
-                    {isExp && (
-                      <Expand>
-                        {rules.map(r => {
-                          const pts = s.perRule[r.id] ?? 0;
-                          return (
-                            <BarRow key={r.id}>
-                              <BarLabel>{r.name.slice(0, 8)}</BarLabel>
-                              <Bar>
-                                <BarFill $width={Math.abs(pts) / maxPts * 100} $negative={pts < 0} />
-                              </Bar>
-                              <BarVal>{pts > 0 ? '+' : ''}{pts.toFixed(0)}</BarVal>
-                            </BarRow>
-                          );
-                        })}
-                      </Expand>
-                    )}
-                  </MemberInfo>
-                  <div>
-                    <Pts>{getDisplayPts(s)}</Pts>
-                  </div>
-                </LbRow>
-              </div>
-            );
-          })}
-          {rest.length > 0 && <div style={{ display: 'none' }}>{rest.length}</div>}
-        </Card>
-
-        <FootNote>
-          Tap a row to view member profile. Removed members are hidden · see History for full record.
-        </FootNote>
-      </Body>
-    </>
+        <Meta>
+          {scope === 'all'
+            ? `Every point since ${new Date(`${challenge.config.startDate}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })}.`
+            : 'Points earned this week. Arrows show the move against the all-time rank.'}
+        </Meta>
+      </Sheet>
+    </Body>
   );
 }

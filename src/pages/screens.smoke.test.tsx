@@ -8,9 +8,9 @@
  *
  * `renderToString` is enough for that and needs no test-renderer dependency.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { renderToString } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from 'styled-components';
 import type { ReactElement } from 'react';
 import { appTheme } from '@/theme/theme';
@@ -52,6 +52,11 @@ vi.mock('@/context/AdminModeContext', () => ({
 
 import { ChallengeHomePage } from './ChallengeHomePage';
 import { LogDayPage } from './LogDayPage';
+import { LeaderboardPage } from './LeaderboardPage';
+import { HistoryPage } from './HistoryPage';
+import { RulesReferencePage } from './RulesReferencePage';
+import { MemberProfilePage } from './MemberProfilePage';
+import { PickMemberPage } from './PickMemberPage';
 
 function render(el: ReactElement, route = '/c/abc123'): string {
   return renderToString(
@@ -60,6 +65,32 @@ function render(el: ReactElement, route = '/c/abc123'): string {
     </ThemeProvider>,
   );
 }
+
+/** For screens that read route params. */
+function renderAt(el: ReactElement, pattern: string, route: string): string {
+  return renderToString(
+    <ThemeProvider theme={appTheme}>
+      <MemoryRouter initialEntries={[route]}>
+        <Routes>
+          <Route path={pattern} element={el} />
+        </Routes>
+      </MemoryRouter>
+    </ThemeProvider>,
+  );
+}
+
+// react-router calls useLayoutEffect unconditionally; on the server that warns
+// every render and buries anything that actually matters.
+const realError = console.error;
+beforeAll(() => {
+  console.error = (...args: unknown[]) => {
+    if (typeof args[0] === 'string' && args[0].includes('useLayoutEffect does nothing on the server')) return;
+    realError(...args);
+  };
+});
+afterAll(() => {
+  console.error = realError;
+});
 
 beforeEach(() => {
   challengeState.challenge = makeChallenge();
@@ -191,5 +222,150 @@ describe('Log day', () => {
     ];
     const html = render(<LogDayPage />, '/c/abc123/log');
     expect(html).toContain('2 of 4 this week');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Leaderboard', () => {
+  it('ranks everyone with a podium', () => {
+    const html = render(<LeaderboardPage />, '/c/abc123/board');
+    expect(html).toContain('Leaderboard');
+    expect(html).toContain('Kunle');
+    expect(html).toContain('Ella');
+    expect(html).toContain('Standings');
+  });
+
+  it('offers both scopes', () => {
+    const html = render(<LeaderboardPage />, '/c/abc123/board');
+    expect(html).toContain('All time');
+    expect(html).toContain('This week');
+  });
+
+  it('shows an empty state rather than an empty podium', () => {
+    challengeState.entries = [];
+    const html = render(<LeaderboardPage />, '/c/abc123/board');
+    expect(html).toContain('Nothing logged yet');
+  });
+
+  it('surfaces a load error with a way out', () => {
+    challengeState.error = 'Firestore is unreachable.';
+    const html = render(<LeaderboardPage />, '/c/abc123/board');
+    expect(html).toContain('Scores didn’t load');
+    expect(html).toContain('Try again');
+    challengeState.error = null;
+  });
+
+  it('renders a podium-less board when there are fewer than three people', () => {
+    challengeState.members = [MEMBERS[0]!];
+    challengeState.activeMembers = [MEMBERS[0]!];
+    expect(() => render(<LeaderboardPage />, '/c/abc123/board')).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('History', () => {
+  it('lists every day back to the challenge start, newest first', () => {
+    const html = render(<HistoryPage />, '/c/abc123/history');
+    expect(html).toContain('Today');
+    expect(html).toContain('Yesterday');
+    // 2026-05-01 through 2026-05-22.
+    expect(html).toContain('22 days');
+  });
+
+  it('links each day into the editor for that date', () => {
+    const html = render(<HistoryPage />, '/c/abc123/history');
+    expect(html).toContain('/c/abc123/log?date=2026-05-20');
+  });
+
+  it('shows an empty state before anything is logged', () => {
+    challengeState.entries = [];
+    const html = render(<HistoryPage />, '/c/abc123/history');
+    expect(html).toContain('No days logged yet');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Rules', () => {
+  it('lists every active rule with its formula', () => {
+    const html = render(<RulesReferencePage />, '/c/abc123/rules');
+    expect(html).toContain('Gym');
+    expect(html).toContain('Clean streak');
+    expect(html).toContain('6 rules in play');
+  });
+
+  it('starts with every rule collapsed', () => {
+    const html = render(<RulesReferencePage />, '/c/abc123/rules');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('aria-expanded="true"');
+  });
+
+  it('shows the free-pass balance against a rule that has them', () => {
+    const html = render(<RulesReferencePage />, '/c/abc123/rules');
+    expect(html).toContain('free passes left');
+  });
+
+  it('explains itself when there are no rules', () => {
+    const c = makeChallenge();
+    c.config.rules = [];
+    challengeState.challenge = c;
+    const html = render(<RulesReferencePage />, '/c/abc123/rules');
+    expect(html).toContain('No rules yet');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Member profile', () => {
+  const at = (id: string) => renderAt(<MemberProfilePage />, '/c/:slug/m/:memberId', `/c/abc123/m/${id}`);
+
+  it('breaks a member’s points down by rule', () => {
+    const html = at('m1');
+    expect(html).toContain('Where the points came from');
+    expect(html).toContain('This week');
+  });
+
+  it('calls the current device’s member "You"', () => {
+    expect(at('m1')).toContain('You');
+  });
+
+  it('shows an empty state for someone who has logged nothing', () => {
+    const html = at('m3');
+    expect(html).toContain('hasn’t logged anything yet');
+  });
+
+  it('handles a member id that does not exist', () => {
+    const html = at('nope');
+    expect(html).toContain('No such member');
+  });
+
+  it('hides owner actions when admin mode is locked', () => {
+    expect(at('m2')).not.toContain('Actions for');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Member picker', () => {
+  it('lists everyone on the roster', () => {
+    const html = render(<PickMemberPage />, '/c/abc123/pick');
+    expect(html).toContain('Who’s logging in?');
+    expect(html).toContain('Kunle');
+    expect(html).toContain('Ella');
+    expect(html).toContain('Scar');
+  });
+
+  it('says how much each person has logged', () => {
+    const html = render(<PickMemberPage />, '/c/abc123/pick');
+    expect(html).toContain('days logged');
+    expect(html).toContain('Nothing logged yet');
+  });
+
+  it('explains what to do when the roster is empty', () => {
+    challengeState.activeMembers = [];
+    const html = render(<PickMemberPage />, '/c/abc123/pick');
+    expect(html).toContain('No one on the roster yet');
   });
 });
