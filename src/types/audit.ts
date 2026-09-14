@@ -14,10 +14,12 @@ import type { Timestamp } from 'firebase/firestore';
 export const AUDIT_ACTIONS = [
   'challenge.create',
   'challenge.config_change',
+  'challenge.rename',
   'challenge.status_change',
   'member.add',
   'member.remove',
   'member.rename',
+  'member.restore',
   'entry.create',
   'entry.update',
   'entry.delete',

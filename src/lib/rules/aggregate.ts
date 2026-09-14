@@ -22,7 +22,7 @@ import type {
   WeeklySummary,
 } from '../../types';
 import type { DateString } from '../../types';
-import { diffDays, getWeekWindow } from '../dates';
+import { countConsecutiveDaysAtEnd, diffDays, getWeekWindow } from '../dates';
 import { evaluateEntry } from './evaluate';
 
 // ---------------------------------------------------------------------------
@@ -334,4 +334,34 @@ function emptyStanding(member: Member, rules: Challenge['config']['rules']): Mem
     perRule,
     rank: 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Logged-day streak
+// ---------------------------------------------------------------------------
+
+/**
+ * Consecutive calendar days the member has logged anything, counting back from
+ * today. This is the "4 days" figure in the Home header, and it is NOT the
+ * same thing as a streak *rule* — that one tracks positive days on one
+ * specific rule and pays a bonus.
+ *
+ * Yesterday still counts as the anchor so the number doesn't drop to zero
+ * every midnight before you've had a chance to log.
+ */
+export function getLoggedDayStreak(
+  memberEntries: readonly Entry[],
+  today: DateString,
+): number {
+  if (memberEntries.length === 0) return 0;
+
+  const dates = [...new Set(memberEntries.map(e => e.date))].sort();
+  const last = dates[dates.length - 1];
+  if (last === undefined) return 0;
+
+  // A streak is live only if it reaches today or yesterday.
+  const gap = diffDays(today, last);
+  if (gap > 1 || gap < 0) return 0;
+
+  return countConsecutiveDaysAtEnd(dates);
 }

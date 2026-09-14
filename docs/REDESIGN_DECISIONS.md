@@ -52,4 +52,34 @@ Standards applied: `docs/ui-design-patterns.md`.
 
 ## Notes logged during the build
 
-<!-- appended as work proceeds -->
+### Free passes were already in the engine
+
+`evaluate.ts` has scored `'free'` for binary and penalty rules since v2, and
+`isFreePassExhausted` / `countFreePassesUsed` / `buildWeeklySummary().freePassUsage`
+were all already there. The only thing missing was a way to *spend* one — the
+gap was entirely in the UI. Added `getFreePassState()` alongside the existing
+counters rather than a new module.
+
+It takes an `excludeDate` because re-opening a day you already spent a pass on
+must not count that pass against the balance you're allowed to spend *on that
+day* — otherwise the number shown drops by one every time you revisit the day.
+
+### Turning a rule off does not erase its history
+
+`aggregateMember` recomputes every entry from its raw values; nothing reads the
+`pts` snapshotted on the entry doc. So scoring deliberately ignores
+`rule.active`: an inactive rule disappears from the log and from Today, but the
+values already logged keep scoring exactly as before.
+
+Making scoring honour the flag would have retroactively voided a rule's entire
+contribution to the leaderboard the moment an owner toggled it — a destructive
+surprise, and the opposite of the design's own promise that "edits apply from
+today forward; past points never change".
+
+That also makes the change UI-only, with no risk to the scoring engine.
+
+### The challenge name had no write path
+
+`updateChallengeConfig` only ever wrote the `config` sub-object, so the name —
+documented as owner-editable — could not actually be edited. Added
+`renameChallenge`. The slug deliberately does not follow the name.

@@ -38,6 +38,11 @@ export type RemoveMemberResult =
   | { ok: true }
   | { ok: false; reason: 'not_found' };
 
+export type RestoreMemberResult =
+  | { ok: true }
+  | { ok: false; reason: 'not_found' }
+  | { ok: false; reason: 'name_taken'; suggested: string };
+
 export type SetTrackerConfigResult =
   | { ok: true }
   | { ok: false; reason: 'not_found' };
@@ -258,6 +263,52 @@ export async function setTrackerConfig(
     target: { kind: 'member', id: memberId },
     before,
     after: config,
+  });
+
+  await batch.commit();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Restore (undo a removal)
+// ---------------------------------------------------------------------------
+
+/**
+ * Put a removed member back on the roster. This is what the Undo on the
+ * "removed" toast calls — §7 prefers undo over a confirmation dialog, because
+ * people act faster than they read.
+ *
+ * The name is re-checked on the way back in: someone else may have taken it
+ * while this member was off the roster, and two active members cannot share a
+ * name. The caller gets a suggestion rather than a silent collision.
+ */
+export async function restoreMember(
+  challengeId: string,
+  memberId: string,
+  actor: ActorContext,
+): Promise<RestoreMemberResult> {
+  const memberRef = doc(db, 'challenges', challengeId, 'members', memberId);
+  const snap = await getDoc(memberRef);
+  if (!snap.exists()) return { ok: false, reason: 'not_found' };
+
+  const before = { id: snap.id, ...snap.data() } as Member;
+  if (before.active) return { ok: true };
+
+  const others = (await listAllMembers(challengeId)).filter(m => m.id !== memberId && m.active);
+  if (findNameConflict(before.name, others)) {
+    return { ok: false, reason: 'name_taken', suggested: suggestName(before.name, others) };
+  }
+
+  const after = { ...before, active: true, removedAt: null };
+  const batch = writeBatch(db);
+  batch.update(memberRef, { active: true, removedAt: null });
+
+  appendAuditLog(batch, challengeId, {
+    actor,
+    action: 'member.restore',
+    target: { kind: 'member', id: memberId },
+    before,
+    after,
   });
 
   await batch.commit();
