@@ -6,7 +6,7 @@ import { useSelectedMember } from '@/context/SelectedMemberContext';
 import {
   activeRules, type Entry, type RawEntryValue, type Rule, type TrackerRule,
 } from '@/types';
-import { isWithinEditWindow, todayInTz } from '@/lib/dates';
+import { formatDateLabel, isWithinEditWindow, todayInTz } from '@/lib/dates';
 import { evaluateEntry } from '@/lib/rules/evaluate';
 import { getFreePassState } from '@/lib/rules/kinds';
 import { buildWeeklySummary, getLoggedDayStreak } from '@/lib/rules/aggregate';
@@ -96,12 +96,6 @@ const EditorHead = styled.div`
 `;
 
 // ---------------------------------------------------------------------------
-
-function formatDayLabel(date: string, opts?: Intl.DateTimeFormatOptions): string {
-  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC', ...opts,
-  });
-}
 
 function saveErrorMessage(reason: string): string {
   switch (reason) {
@@ -372,7 +366,7 @@ export function LogDayPage() {
         <Celebrate>
           <Mark size={80} happy />
           <div>
-            <h1>Logged for {formatDayLabel(date)}</h1>
+            <h1>Logged for {formatDateLabel(date, { weekday: true, today })}</h1>
             <Meta>
               {loggedCount === dailyRules.length
                 ? 'Everything’s in. Nothing left to do today.'
@@ -424,7 +418,7 @@ export function LogDayPage() {
       <>
         <Body>
           <TopBar
-            title={formatDayLabel(date)}
+            title={formatDateLabel(date, { weekday: true, today })}
             sub={editable ? 'Editing a past day' : 'Locked — outside the challenge dates'}
             left={
               <IconButton type="button" aria-label="Back" onClick={() => navigate(-1)}>
@@ -533,7 +527,7 @@ export function LogDayPage() {
       <Body>
         <TopBar
           center
-          title={`Log ${formatDayLabel(today, { weekday: undefined })}`}
+          title={`Log ${formatDateLabel(today, { today })}`}
           sub={`Step ${stepIdx + 1} of ${steps.length}`}
           left={
             stepIdx > 0 ? (

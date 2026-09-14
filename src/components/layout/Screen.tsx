@@ -183,7 +183,16 @@ const ProgressWrap = styled.div`
   }
 `;
 
-export function HeroProgress({ label, value, pct }: { label: string; value: string; pct: number }) {
+interface HeroProgressProps {
+  /** The visible label. Say what the bar is measuring toward. */
+  label: string;
+  value: string;
+  pct: number;
+  /** Overrides the accessible name when `label` reads oddly out of context. */
+  ariaLabel?: string;
+}
+
+export function HeroProgress({ label, value, pct, ariaLabel }: HeroProgressProps) {
   const clamped = Math.max(0, Math.min(100, pct));
   return (
     <ProgressWrap>
@@ -197,7 +206,7 @@ export function HeroProgress({ label, value, pct }: { label: string; value: stri
         aria-valuenow={Math.round(clamped)}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={label}
+        aria-label={ariaLabel ?? label}
       >
         <i style={{ width: `${clamped}%` }} />
       </div>

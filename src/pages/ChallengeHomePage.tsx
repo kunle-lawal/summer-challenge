@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
 import { activeRules, type Rule, type StreakRule, type TrackerRule } from '@/types';
-import { diffDays, getWeekNumber, todayInTz } from '@/lib/dates';
+import { diffDays, formatDateLabel, getWeekNumber, todayInTz } from '@/lib/dates';
 import { evaluateEntry } from '@/lib/rules/evaluate';
 import { buildLeaderboard, getLoggedDayStreak } from '@/lib/rules/aggregate';
 import { getStreakRunAtDate } from '@/lib/rules/streakRun';
@@ -184,6 +184,18 @@ const GoalCard = styled.button`
   }
 `;
 
+const OpenEnded = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: ${({ theme }) => theme.color.onPanel2};
+
+  svg { width: 14px; height: 14px; flex: 0 0 auto; }
+`;
+
 const Section = styled.section`
   display: flex;
   flex-direction: column;
@@ -262,6 +274,7 @@ export function ChallengeHomePage() {
       weekNumber: Math.max(1, getWeekNumber(today, weekAnchor)),
       totalWeeks: span ? Math.ceil(span / 7) : null,
       daysLeft: endDate ? Math.max(0, diffDays(endDate, today)) : null,
+      endDate,
       pct,
       top: board.standings.slice(0, 3),
       notStarted: elapsed < 0,
@@ -273,7 +286,7 @@ export function ChallengeHomePage() {
   const {
     me, today, todayEntry, myEntries, daily, tracker, streaks, pointsFor,
     todayPoints, loggedCount, total, rank, streakDays, weekNumber, totalWeeks,
-    daysLeft, pct, top, notStarted,
+    daysLeft, endDate, pct, top, notStarted,
   } = view;
 
   const ended = challenge.status === 'ended';
@@ -292,9 +305,15 @@ export function ChallengeHomePage() {
 
   const ordinal = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
 
-  const dateLabel = new Date(`${today}T12:00:00Z`).toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
-  });
+  const dateLabel = formatDateLabel(today, { weekday: true, today });
+
+  // The bar measures time toward the end date, so labelling it with that date
+  // makes it explain itself — and answers "when does this finish?", which
+  // "38 days left" only answers by arithmetic.
+  const finished = ended || (daysLeft !== null && daysLeft === 0 && endDate !== null && endDate < today);
+  const endLabel = endDate
+    ? `${finished ? 'Ended' : 'Ends'} ${formatDateLabel(endDate, { weekday: true, today })}`
+    : 'No end date';
 
   const goalConfig = tracker && me.trackerConfig?.ruleId === tracker.id ? me.trackerConfig : null;
   const goal = goalConfig && tracker ? resolveTrackerConfig(goalConfig, tracker.unit, tracker.name) : null;
@@ -344,8 +363,20 @@ export function ChallengeHomePage() {
             <Icon name="down" />
           </WhoAmI>
 
-          {pct !== null && daysLeft !== null && (
-            <HeroProgress label="Progress" value={`${Math.round(pct)}% · ${daysLeft}d left`} pct={pct} />
+          {pct !== null && daysLeft !== null ? (
+            <HeroProgress
+              label={endLabel}
+              value={finished ? 'Finished' : `${Math.round(pct)}% · ${daysLeft}d left`}
+              pct={finished ? 100 : pct}
+              ariaLabel={`Challenge progress, ${endLabel.toLowerCase()}`}
+            />
+          ) : (
+            /* Open-ended: there's no bar to draw, but "when does this end?"
+               still deserves an answer. */
+            <OpenEnded>
+              <Icon name="cal" />
+              No end date · running since {formatDateLabel(challenge.config.startDate, { today })}
+            </OpenEnded>
           )}
 
           <Stats>

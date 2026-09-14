@@ -126,6 +126,28 @@ describe('Home', () => {
     }
   });
 
+  it('says when the challenge ends, not just how long is left', () => {
+    const html = render(<ChallengeHomePage />);
+    expect(html).toContain('Ends Sun, Jul 26');
+    expect(html).toContain('d left');
+  });
+
+  it('says so in the past tense once the challenge is over', () => {
+    challengeState.challenge = makeChallenge({ status: 'ended' });
+    const html = render(<ChallengeHomePage />);
+    expect(html).toContain('Ended');
+    expect(html).toContain('Finished');
+  });
+
+  it('answers the same question when there is no end date at all', () => {
+    const c = makeChallenge();
+    c.config.endDate = null;
+    challengeState.challenge = c;
+    const html = render(<ChallengeHomePage />);
+    expect(html).toContain('No end date');
+    expect(html).toContain('running since');
+  });
+
   it('names how many rules are left rather than a bare "Log today"', () => {
     const html = render(<ChallengeHomePage />);
     expect(html).toMatch(/Log today|Finish today|Edit today/);

@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
 import type { MemberStanding } from '@/types';
-import { getWeekNumber, getWeekWindow, todayInTz } from '@/lib/dates';
+import { formatDateLabel, getWeekNumber, getWeekWindow, todayInTz } from '@/lib/dates';
 import { buildLeaderboard } from '@/lib/rules/aggregate';
 import { Body, Sheet, TopBar } from '@/components/layout/Screen';
 import { EmptyState } from '@/components/ui/feedback';
@@ -291,7 +291,7 @@ export function LeaderboardPage() {
 
         <Meta>
           {scope === 'all'
-            ? `Every point since ${new Date(`${challenge.config.startDate}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })}.`
+            ? `Every point since ${formatDateLabel(challenge.config.startDate, { month: 'long', today: data.today })}.`
             : 'Points earned this week. Arrows show the move against the all-time rank.'}
         </Meta>
       </Sheet>

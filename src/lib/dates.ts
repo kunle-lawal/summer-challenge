@@ -178,3 +178,56 @@ export function countConsecutiveDaysAtEnd(sortedDates: readonly DateString[]): n
   }
   return streak;
 }
+
+// ---------------------------------------------------------------------------
+// Display
+// ---------------------------------------------------------------------------
+
+export interface DateLabelOptions {
+  /** Prefix the weekday, e.g. "Sun, Nov 15". */
+  weekday?: boolean;
+  /** 'auto' adds the year only when it isn't the current one. */
+  year?: 'auto' | 'never' | 'always';
+  /** Needed for 'auto' to know what "this year" means. Defaults to the system clock. */
+  today?: DateString;
+  /** 'long' spells the month out: "November 15". */
+  month?: 'short' | 'long';
+}
+
+/**
+ * Human-readable label for a calendar date: "Nov 15", "Sun, Nov 15",
+ * "Nov 15, 2027".
+ *
+ * Parsed at midday UTC and formatted in UTC so the label never slips a day
+ * either side of midnight — the same trick the rest of this module uses.
+ */
+export function formatDateLabel(date: DateString, options: DateLabelOptions = {}): string {
+  const { weekday = false, year = 'auto', today, month = 'short' } = options;
+  const parsed = new Date(`${date}T12:00:00Z`);
+
+  const showYear =
+    year === 'always' ||
+    (year === 'auto' && date.slice(0, 4) !== (today ?? new Date().toISOString()).slice(0, 4));
+
+  return parsed.toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    month,
+    day: 'numeric',
+    ...(weekday ? { weekday: 'short' as const } : {}),
+    ...(showYear ? { year: 'numeric' as const } : {}),
+  });
+}
+
+/**
+ * Single-letter weekday for a calendar date, for the seven-box week grids.
+ *
+ * Here rather than inline so the midday-UTC parse — the thing that stops a
+ * date-only string landing on the previous day west of Greenwich — lives in
+ * one module.
+ */
+export function weekdayInitial(date: DateString): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
+    weekday: 'narrow',
+    timeZone: 'UTC',
+  });
+}
