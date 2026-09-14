@@ -13,7 +13,7 @@ import { Body, FootBar, Screen, Sheet, TopBar } from '@/components/layout/Screen
 import { Dialog, Mark } from '@/components/ui/feedback';
 import { Icon } from '@/components/ui/Icons';
 import { MemberBadge } from '@/components/ui/MemberBadge';
-import { RuleTile } from '@/components/ui/Tile';
+import { RuleTile, Tile } from '@/components/ui/Tile';
 import { RuleEditor } from '@/components/admin/RuleEditor';
 import {
   AddRow, Button, Card, ErrorText, Field, Hint, IconButton, Input, List,
@@ -209,7 +209,7 @@ export function CreateChallengePage() {
             </div>
 
             <LinkCard $tint>
-              <RuleTile rule={{ kind: 'binary' }} />
+              <Tile tone="sand" icon="share" />
               <Name>
                 <b>/c/{created.slug}</b>
                 <Meta>Anyone with this link can log and see the board</Meta>

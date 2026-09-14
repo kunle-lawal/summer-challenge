@@ -286,7 +286,9 @@ export function LogDayPage() {
       id: existing?.id ?? 'draft',
       memberId: me.id,
       date,
-      values: values as Entry['values'],
+      values: Object.fromEntries(
+        Object.entries(values).filter(([, v]) => v !== undefined),
+      ) as Entry['values'],
       pts: 0,
       createdAt: existing?.createdAt ?? ({ seconds: 0, nanoseconds: 0 } as never),
       updatedAt: existing?.updatedAt ?? ({ seconds: 0, nanoseconds: 0 } as never),

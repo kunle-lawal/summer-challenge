@@ -3,7 +3,7 @@ import type { EvaluatedRule, RawEntryValue, Rule } from '@/types';
 import type { FreePassState } from '@/lib/rules/kinds';
 import { formatPoints } from '@/lib/rules/display';
 import { Icon } from '@/components/ui/Icons';
-import { Chip, Chips, Choice, Choices, Hint, Input, Meta, Pill } from '@/components/ui/primitives';
+import { Chip, Chips, Choice, Choices, Input, Meta, Pill } from '@/components/ui/primitives';
 
 /**
  * The input for one rule, and the free-pass control that sits beneath it.
@@ -319,5 +319,3 @@ export function hintFor(rule: Rule): string | null {
       return null;
   }
 }
-
-export { Hint };
