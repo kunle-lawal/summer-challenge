@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { ChallengeProvider, useChallenge } from "@/context/ChallengeContext";
 import {
 	SelectedMemberProvider,
@@ -9,6 +9,8 @@ import { AdminModeProvider } from "@/context/AdminModeContext";
 import { Layout } from "@/components/layout/Layout";
 import { LoadingState } from "@/components/layout/LoadingState";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
+import { Body, Screen } from "@/components/layout/Screen";
+import { EmptyState } from "@/components/ui/feedback";
 
 import { RootRedirect } from "@/pages/RootRedirect";
 import { CreateChallengePage } from "@/pages/CreateChallengePage";
@@ -90,21 +92,31 @@ function RequireMember({ children }: { children: ReactNode }) {
 // ── Utility pages ─────────────────────────────────────────────────────────────
 
 function NotFound() {
+	const navigate = useNavigate();
 	return (
-		<div style={{ padding: "40px 24px", textAlign: "center" }}>
-			<p style={{ fontSize: 14, opacity: 0.5 }}>Challenge not found.</p>
-			<a href="/" style={{ marginTop: 12, display: "block", fontSize: 13, textDecoration: "underline" }}>
-				Go home
-			</a>
-		</div>
+		<Screen>
+			<Body>
+				<EmptyState
+					title="No challenge at this link"
+					body="The link may be mistyped, or the challenge may have been deleted. Check the link with whoever shared it."
+					action={{ label: "Start a challenge", onClick: () => navigate("/new") }}
+				/>
+			</Body>
+		</Screen>
 	);
 }
 
 function ErrorPage({ message }: { message: string }) {
 	return (
-		<div style={{ padding: "40px 24px" }}>
-			<p style={{ fontSize: 14, color: "#9a3412" }}>{message}</p>
-		</div>
+		<Screen>
+			<Body>
+				<EmptyState
+					title="Couldn't load the challenge"
+					body={message}
+					action={{ label: "Try again", onClick: () => window.location.reload() }}
+				/>
+			</Body>
+		</Screen>
 	);
 }
 
@@ -122,9 +134,24 @@ export function App() {
 
 				{/* Chrome routes (with BottomNav via Layout) */}
 				<Route element={<ChromeLayout />}>
-					<Route path="home" element={<RouteEB><ChallengeHomePage /></RouteEB>} />
+					{/*
+					 * Home is the landing screen and Log day is its primary CTA, per the
+					 * design. Both need a member: Home is entirely personal (your points,
+					 * your rank, your day), and Log obviously is. Board, History, Rules and
+					 * member profiles stay open so a shared link still opens on something.
+					 */}
 					<Route
 						index
+						element={
+							<RouteEB>
+								<RequireMember>
+									<ChallengeHomePage />
+								</RequireMember>
+							</RouteEB>
+						}
+					/>
+					<Route
+						path="log"
 						element={
 							<RouteEB>
 								<RequireMember>
@@ -133,7 +160,8 @@ export function App() {
 							</RouteEB>
 						}
 					/>
-					<Route path="log" element={<Navigate to=".." replace relative="path" />} />
+					{/* Kept so bookmarks from the previous layout still resolve. */}
+					<Route path="home" element={<Navigate to=".." replace relative="path" />} />
 					<Route path="board" element={<RouteEB><LeaderboardPage /></RouteEB>} />
 					<Route path="history" element={<RouteEB><HistoryPage /></RouteEB>} />
 					<Route path="m/:memberId" element={<RouteEB><MemberProfilePage /></RouteEB>} />

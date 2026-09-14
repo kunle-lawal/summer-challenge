@@ -24,11 +24,9 @@ const Ring = styled.div`
 `;
 
 const Msg = styled.p`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.color.ink3};
+  font-size: 13px;
+  font-weight: 500;
+  color: ${({ theme }) => theme.color.ink2};
 `;
 
 interface Props {
