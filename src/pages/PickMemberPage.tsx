@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
@@ -40,6 +40,17 @@ const Sub = styled.p`
   line-height: 21px;
   font-weight: 500;
   color: ${({ theme }) => theme.color.ink2};
+`;
+
+const NewLink = styled(Link)`
+  font: inherit;
+  font-weight: 600;
+  color: ${({ theme }) => theme.color.accentDeep};
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+
+  &:hover { color: ${({ theme }) => theme.color.ink}; }
 `;
 
 const Foot = styled.p`
@@ -122,7 +133,11 @@ export function PickMemberPage() {
             })}
           </List>
 
-          <Foot>Not on the list? Ask whoever set the challenge up to add you.</Foot>
+          <Foot>
+            Not on the list? Ask whoever set the challenge up to add you — or{' '}
+            <NewLink to="/new">start your own challenge</NewLink>
+            .
+          </Foot>
         </Pane>
       </Body>
     </Screen>

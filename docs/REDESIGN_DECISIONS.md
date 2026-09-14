@@ -133,3 +133,43 @@ Every commit on this branch typechecks and passes the full suite. Final state:
 Not verified, for want of a browser driver in this repo: actual pixel rendering,
 real-device touch behaviour, and the 200% zoom and 390px cases as rendered rather
 than as reasoned about.
+
+## Challenge templates
+
+`src/lib/rules/templates.ts` replaces the create screen's three-way preset
+segment with four described templates. Each carries its own suggested length,
+so picking one sets the end date too.
+
+| Template | Weeks | Ceiling | For |
+|---|---|---|---|
+| Lock In | 9 | 578 | The balanced default — gym, steps, sleep, food, two streaks, personal goal |
+| Base Camp | 8 | 530 | Unpredictable schedules; consistency over intensity |
+| Cut | 9 | 674 | A strict body-composition push where the personal goal decides it |
+| Start empty | 9 | — | Build your own |
+
+### Two constraints every template is tuned against
+
+**Streaks fire on days where the watched rule scored above zero.** That makes a
+streak on a **capped binary** break the instant the cap bites (a capped day
+scores 0), and a streak on a **counter** free to farm (one logged step keeps it
+alive). Base Camp's Move rule is deliberately uncapped for exactly this reason.
+`templates.test.ts` rejects both shapes.
+
+**Daily rules compound.** Over nine weeks a rule worth +2 a day is worth ~126
+points, which quietly dwarfs anything weekly-capped. Every template is budgeted
+so no single rule exceeds a quarter of its ceiling — with two people there is
+nowhere to hide, and one metric shouldn't settle it. That's a test too, and it
+fails if the numbers drift.
+
+Every template also carries a tracker, so the result turns on who moved furthest
+against their own starting point rather than who started fitter.
+
+## The create screen was unreachable
+
+`/new` could only be reached from the settings screen, which is behind the owner
+password — and `/` redirects to your most recent challenge, so anyone who
+already had one could not get to it at all. Starting a challenge is not an owner
+action.
+
+Added as a real `<Link>` (not a button with an onClick) at the foot of Home and
+in the member picker, where someone who isn't on a roster lands.

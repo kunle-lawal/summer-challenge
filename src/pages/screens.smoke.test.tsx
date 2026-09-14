@@ -151,6 +151,17 @@ describe('Home', () => {
     expect(html).toContain('disabled');
   });
 
+  /*
+   * The only other link to /new sat behind the owner password, and "/"
+   * redirects to your most recent challenge — so anyone who already had one
+   * could not reach the create screen at all.
+   */
+  it('offers a way to start another challenge without the owner password', () => {
+    const html = render(<ChallengeHomePage />);
+    expect(html).toContain('Start a new challenge');
+    expect(html).toContain('href="/new"');
+  });
+
   it('hides retired rules from Today', () => {
     const c = makeChallenge();
     c.config.rules = c.config.rules.map(r => (r.id === 'steps' ? { ...r, active: false } : r));
@@ -376,6 +387,11 @@ describe('Member picker', () => {
     expect(html).toContain('Nothing logged yet');
   });
 
+  it('lets someone who is not on the roster start their own challenge', () => {
+    const html = render(<PickMemberPage />, '/c/abc123/pick');
+    expect(html).toContain('start your own challenge');
+  });
+
   it('explains what to do when the roster is empty', () => {
     challengeState.activeMembers = [];
     const html = render(<PickMemberPage />, '/c/abc123/pick');
@@ -439,16 +455,38 @@ describe('Create challenge', () => {
     expect(html).toContain('Password and people');
   });
 
-  it('starts on the classic preset with its rules listed', () => {
+  it('offers every challenge template', () => {
     const html = render(<CreateChallengePage />, '/new');
-    expect(html).toContain('Classic');
+    for (const name of ['Lock In', 'Base Camp', 'Cut', 'Start empty']) {
+      expect(html).toContain(name);
+    }
+  });
+
+  it('starts on a template, with its rules already listed', () => {
+    const html = render(<CreateChallengePage />, '/new');
     expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('Gym');
+    expect(html).toContain('Personal goal');
+  });
+
+  it('says what each template costs you if you are perfect, and how forgiving it is', () => {
+    const html = render(<CreateChallengePage />, '/new');
+    expect(html).toContain('pts if perfect');
+    expect(html).toContain('6 gym passes');
+    expect(html).toContain('first slip each week free');
   });
 
   it('cannot be submitted while empty', () => {
     const html = render(<CreateChallengePage />, '/new');
     expect(html).toContain('Create challenge');
     expect(html).toContain('disabled');
+  });
+
+  it('sets the end date from the template it starts on', () => {
+    // System time is 2026-05-22; Lock In is nine weeks, so 63 days inclusive.
+    const html = render(<CreateChallengePage />, '/new');
+    expect(html).toContain('value="2026-05-22"');
+    expect(html).toContain('value="2026-07-23"');
   });
 
   it('asks for names rather than offering a roster to toggle', () => {
