@@ -322,3 +322,95 @@ export function explainRule(rule: Rule, allRules: readonly Rule[] = []): string 
 
   return parts.filter(Boolean).join(' ');
 }
+
+
+// ---------------------------------------------------------------------------
+// Blank rule per kind
+// ---------------------------------------------------------------------------
+
+/**
+ * A blank rule of the given kind, with sensible starting numbers.
+ *
+ * Lives here rather than in the editor because both the rule editor and the
+ * create flow need it.
+ */
+export function defaultForKind(kind: RuleKind, id: string, order: number): Rule {
+	switch (kind) {
+		case "binary":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				pointsYes: 1,
+				pointsNo: 0,
+				pointsFree: 1,
+				freePasses: null,
+				weeklyCap: null,
+			};
+		case "counter":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				target: 10000,
+				maxPoints: 5,
+				unit: "units",
+				decimals: 0,
+			};
+		case "range":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				min: 5,
+				max: 8,
+				pointsAtMin: 1,
+				pointsAtMax: 4,
+				pointsOutside: 0,
+				unit: "units",
+				decimals: 1,
+			};
+		case "penalty":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				pointsClean: 1,
+				pointsPerInfraction: -1,
+				pointsFree: 1,
+				weeklyFirstWaived: true,
+				freePasses: null,
+			};
+		case "streak":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				ruleRef: "",
+				daysRequired: 7,
+				bonusPoints: 5,
+				repeatable: true,
+			};
+		case "tracker":
+			return {
+				id,
+				kind,
+				name: "",
+				emoji: "",
+				order,
+				maxPoints: 30,
+				unit: "units",
+				decimals: 1,
+			};
+	}
+}

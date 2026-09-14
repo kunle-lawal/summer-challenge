@@ -23,7 +23,7 @@ const challengeState = {
   notFound: false,
   members: MEMBERS,
   entries: ENTRIES,
-  auditLog: [],
+  auditLog: [] as unknown[],
   isEnded: false,
   activeMembers: MEMBERS,
 };
@@ -45,8 +45,16 @@ vi.mock('@/context/SelectedMemberContext', () => ({
   SelectedMemberProvider: ({ children }: { children: ReactElement }) => children,
 }));
 
+const adminState = {
+  isAdmin: false,
+  entering: false,
+  lastError: null as string | null,
+  enterAdminMode: vi.fn(),
+  exitAdminMode: vi.fn(),
+};
+
 vi.mock('@/context/AdminModeContext', () => ({
-  useAdminMode: () => ({ isAdmin: false, enterAdminMode: vi.fn(), exitAdminMode: vi.fn() }),
+  useAdminMode: () => adminState,
   AdminModeProvider: ({ children }: { children: ReactElement }) => children,
 }));
 
@@ -57,6 +65,8 @@ import { HistoryPage } from './HistoryPage';
 import { RulesReferencePage } from './RulesReferencePage';
 import { MemberProfilePage } from './MemberProfilePage';
 import { PickMemberPage } from './PickMemberPage';
+import { AdminPage } from './AdminPage';
+import { CreateChallengePage } from './CreateChallengePage';
 
 function render(el: ReactElement, route = '/c/abc123'): string {
   return renderToString(
@@ -98,6 +108,9 @@ beforeEach(() => {
   challengeState.entries = ENTRIES;
   challengeState.activeMembers = MEMBERS;
   memberState.selectedMemberId = 'm1';
+  adminState.isAdmin = false;
+  adminState.lastError = null;
+  challengeState.auditLog = [];
   vi.setSystemTime(new Date('2026-05-22T12:00:00Z'));
 });
 
@@ -367,5 +380,80 @@ describe('Member picker', () => {
     challengeState.activeMembers = [];
     const html = render(<PickMemberPage />, '/c/abc123/pick');
     expect(html).toContain('No one on the roster yet');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Settings', () => {
+  it('asks for the owner password before showing anything', () => {
+    const html = render(<AdminPage />, '/c/abc123/admin');
+    expect(html).toContain('Enter the owner password');
+    expect(html).not.toContain('Delete challenge');
+  });
+
+  it('says the password cannot be reset, since it cannot', () => {
+    adminState.lastError = 'wrong_password';
+    const html = render(<AdminPage />, '/c/abc123/admin');
+    expect(html).toContain('no way to reset it');
+  });
+
+  it('shows every section once unlocked', () => {
+    adminState.isAdmin = true;
+    const html = render(<AdminPage />, '/c/abc123/admin');
+    for (const section of ['Basics', 'Rules', 'Members', 'History log', 'End the challenge']) {
+      expect(html).toContain(section);
+    }
+  });
+
+  it('keeps the capabilities the design dropped', () => {
+    adminState.isAdmin = true;
+    const html = render(<AdminPage />, '/c/abc123/admin');
+    expect(html).toContain('Delete challenge');
+    expect(html).toContain('Rename'); // per-member rename
+  });
+
+  it('offers reopening rather than ending once a challenge is over', () => {
+    adminState.isAdmin = true;
+    challengeState.challenge = makeChallenge({ status: 'ended' });
+    const html = render(<AdminPage />, '/c/abc123/admin');
+    expect(html).toContain('Reopen challenge');
+    expect(html).not.toContain('End challenge now');
+  });
+
+  it('renders the challenge name in an editable field', () => {
+    adminState.isAdmin = true;
+    const html = render(<AdminPage />, '/c/abc123/admin');
+    expect(html).toContain('Challenge name');
+    expect(html).toContain('value="Summer Challenge"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Create challenge', () => {
+  it('lays out all three steps', () => {
+    const html = render(<CreateChallengePage />, '/new');
+    expect(html).toContain('Name and dates');
+    expect(html).toContain('Rules');
+    expect(html).toContain('Password and people');
+  });
+
+  it('starts on the classic preset with its rules listed', () => {
+    const html = render(<CreateChallengePage />, '/new');
+    expect(html).toContain('Classic');
+    expect(html).toContain('aria-pressed="true"');
+  });
+
+  it('cannot be submitted while empty', () => {
+    const html = render(<CreateChallengePage />, '/new');
+    expect(html).toContain('Create challenge');
+    expect(html).toContain('disabled');
+  });
+
+  it('asks for names rather than offering a roster to toggle', () => {
+    const html = render(<CreateChallengePage />, '/new');
+    expect(html).toContain('Add someone');
+    expect(html).not.toContain('Not invited');
   });
 });
