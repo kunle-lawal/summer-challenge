@@ -5,7 +5,7 @@ import {
 	SelectedMemberProvider,
 	useSelectedMember,
 } from "@/context/SelectedMemberContext";
-import { AdminModeProvider } from "@/context/AdminModeContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { Layout } from "@/components/layout/Layout";
 import { LoadingState } from "@/components/layout/LoadingState";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
@@ -13,6 +13,7 @@ import { Body, Screen } from "@/components/layout/Screen";
 import { EmptyState } from "@/components/ui/feedback";
 
 import { RootRedirect } from "@/pages/RootRedirect";
+import { SignInPage } from "@/pages/SignInPage";
 import { CreateChallengePage } from "@/pages/CreateChallengePage";
 import { ChallengeHomePage } from "@/pages/ChallengeHomePage";
 import { PickMemberPage } from "@/pages/PickMemberPage";
@@ -46,19 +47,7 @@ function ChallengeLoadWrapper() {
 
 	return (
 		<SelectedMemberProvider slug={challenge.slug} activeMembers={activeMembers}>
-			{/*
-			 * Admin mode wraps the whole challenge, not just /admin, so owner-only
-			 * controls (removing a member from their profile, for instance) can
-			 * appear wherever they belong. Unlocking still happens once, on the
-			 * settings screen, and still lasts only for this tab.
-			 */}
-			<AdminModeProvider
-				challengeId={challenge.id}
-				ownerPasswordHash={challenge.ownerPasswordHash}
-				ownerPasswordSalt={challenge.ownerPasswordSalt}
-			>
-				<Outlet />
-			</AdminModeProvider>
+			<Outlet />
 		</SelectedMemberProvider>
 	);
 }
@@ -119,7 +108,31 @@ function ErrorPage({ message }: { message: string }) {
 
 // ── App router ────────────────────────────────────────────────────────────────
 
+/**
+ * Nothing renders until Firebase has restored any existing session.
+ *
+ * Every security rule requires `request.auth`, so a Firestore read issued
+ * before auth resolves fails with permission-denied — which would look like a
+ * broken app rather than a signed-out one.
+ */
+function RequireAuth({ children }: { children: ReactNode }) {
+	const { user, loading } = useAuth();
+	if (loading) return <LoadingState message="Signing you in…" />;
+	if (!user) return <SignInPage />;
+	return <>{children}</>;
+}
+
 export function App() {
+	return (
+		<AuthProvider>
+			<RequireAuth>
+				<AppRoutes />
+			</RequireAuth>
+		</AuthProvider>
+	);
+}
+
+function AppRoutes() {
 	return (
 		<Routes>
 			<Route path="/" element={<RootRedirect />} />

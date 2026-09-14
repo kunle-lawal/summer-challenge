@@ -222,3 +222,88 @@ action.
 
 Added as a real `<Link>` (not a button with an onClick) at the foot of Home and
 in the member picker, where someone who isn't on a roster lands.
+
+---
+
+# v3 — real accounts
+
+## What was wrong
+
+The v2 ruleset had no identity in it at all. `allow read: if true` on a
+wildcard document path grants `list` as well as `get`, so the whole challenges
+collection was enumerable and the six-character slug protected nothing. On top
+of that, every write path was shape-validated but not authorised:
+
+| | Consequence |
+|---|---|
+| `challenges/{id}` world-writable | Overwrite `ownerPasswordHash` and own somebody else's challenge |
+| `slugIndex/{slug}` world-writable | Repoint a live link at a challenge you control |
+| `entries` world-writable | Log days as anyone; overwrite one with `{}` to wipe it, despite deletes being denied |
+| `members` world-writable | Rename or deactivate anyone |
+| `auditLog` world-writable | Forge the only accountability record the app has |
+
+The owner password was never a lock. The hash was world-readable *and*
+world-writable, so it could simply be replaced.
+
+## The shape of the fix
+
+Three invariants:
+
+1. Nothing is readable or writable without `request.auth`.
+2. `list` is denied on every collection, which restores the slug to being a
+   real secret.
+3. Authority comes from two lookups a rule can actually perform —
+   `challenges/{cid}.ownerUid` for admin, and the existence of
+   `challenges/{cid}/membership/{uid}` for membership.
+
+Point 3 is why membership is a uid-keyed document rather than a field. A
+security rule can `get()` a document by id but cannot *query* a collection, so
+"is this account a member?" has to be answerable at a predictable path.
+
+## What that removed
+
+The owner password is gone entirely — `ownerAuth.ts`, `AdminModeContext`, the
+password gate screen, the per-tab session, and the password field on the create
+form. Ownership is `challenge.ownerUid === user.uid`, which the rules check
+independently. Hiding a control and refusing the write are now the same
+decision rather than two that can disagree.
+
+## Claiming is deliberately idempotent
+
+Joining writes two documents — the membership record and the member slot — and
+they can land in either order, or one can fail. So a slot is claimable when
+nobody holds it *or* when you already do, and rewriting an identical claim is
+permitted. A client that retries blindly succeeds instead of wedging.
+
+The rules tests caught this: the first version required `uid == null`, which
+made claiming work in exactly one order and left a half-finished join
+unrecoverable.
+
+## The quota moved somewhere it can't be cleared
+
+The create cooldown lived in `localStorage`, so clearing site data reset it.
+The counter now lives on `users/{uid}`, which only that account can write, and
+the rules permit it to move by at most one and never downward.
+
+## Verification
+
+`npm run test:rules` starts the emulator and runs 67 tests written as the
+attacks they prevent rather than by collection — every `describe` heading in
+`firestore.rules.test.ts` was possible before this change.
+
+`firebase.json` now exists, so the rules in this repo actually deploy. They
+previously did not, and there was no way to tell whether the file matched what
+was live.
+
+## Still to do before this is genuinely production-ready
+
+- **App Check is wired but off.** It needs `VITE_RECAPTCHA_SITE_KEY` and a
+  console registration. Enforcement must not be switched on until the metrics
+  show verified requests dominating, or every client on an older bundle breaks.
+- **Sign in with Apple is written but disabled** (`APPLE_ENABLED`). It needs an
+  Apple Developer account, a Services ID and a key. Apple only *requires* it
+  once an iOS app offers another social login, so it can wait for the native
+  build.
+- **TTL for abandoned challenges** — no retention policy exists yet.
+- **The quota is written but not enforced** — the rules protect the counter;
+  nothing reads it yet at create time.

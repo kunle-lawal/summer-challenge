@@ -1,47 +1,290 @@
 rules_version = '2';
+
+// =============================================================================
+// Summer Challenge — security rules
+//
+// Every rule below assumes an authenticated account. The v2 ruleset had no
+// identity at all, which meant:
+//
+//   - `allow read: if true` on a wildcard document path grants `list` as well
+//     as `get`, so the whole challenges collection could be enumerated and the
+//     6-character slug protected nothing;
+//   - challenge documents were world-writable, so anyone could overwrite
+//     `ownerPasswordHash` and take ownership;
+//   - slugIndex entries were world-writable, so any link could be repointed;
+//   - entries were world-writable, so a day could be forged or wiped;
+//   - the audit log was world-writable, so history could be fabricated.
+//
+// Three invariants fix all of it:
+//
+//   1. Nothing is readable or writable without `request.auth`.
+//   2. `list` is denied on every collection. Documents are reachable only by
+//      an id you were given, which restores the slug to being a real secret.
+//   3. Authority comes from two lookups a rule can actually perform:
+//      `challenges/{cid}.ownerUid` for admin, and the existence of
+//      `challenges/{cid}/membership/{uid}` for membership. Rules can get a
+//      document by id but cannot query a collection, which is why membership
+//      is keyed by uid rather than stored as a field to be searched.
+//
+// Covered by firestore.rules.test.ts against the emulator.
+// =============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // -------------------------------------------------------------------------
-    // Slug index — one doc per slug, contains only challengeId
+    // Identity helpers
     // -------------------------------------------------------------------------
-    match /slugIndex/{slug} {
-      allow read: if true;
-      allow create, update: if request.resource.data.keys().hasOnly(['challengeId'])
-        && request.resource.data.challengeId is string
-        && request.resource.data.challengeId.size() > 0;
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function challengePath(cid) {
+      return /databases/$(database)/documents/challenges/$(cid);
+    }
+
+    function challengeData(cid) {
+      return get(challengePath(cid)).data;
+    }
+
+    function challengeExists(cid) {
+      return exists(challengePath(cid));
+    }
+
+    /** The account that created the challenge. Immutable after creation. */
+    function isOwner(cid) {
+      return signedIn()
+        && challengeExists(cid)
+        && challengeData(cid).ownerUid == uid();
+    }
+
+    /** Holds a claimed slot. Keyed by uid so a rule can look it up directly. */
+    function isMember(cid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/challenges/$(cid)/membership/$(uid()));
+    }
+
+    function isOwnerOrMember(cid) {
+      return isOwner(cid) || isMember(cid);
+    }
+
+    /** The member slot this account holds, or null. */
+    function myMemberId(cid) {
+      return get(/databases/$(database)/documents/challenges/$(cid)/membership/$(uid())).data.memberId;
+    }
+
+    /** Fields that changed in this write. */
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // -------------------------------------------------------------------------
+    // users — one document per account
+    // -------------------------------------------------------------------------
+    // Private to the account. Holds the create quota, so it must not be
+    // writable in ways that reset the counter.
+
+    match /users/{userId} {
+      allow get: if signedIn() && userId == uid();
+      allow list: if false;
+
+      allow create: if signedIn() && userId == uid()
+        && request.resource.data.keys().hasOnly(['displayName', 'createdAt', 'challengesCreated'])
+        && request.resource.data.challengesCreated == 0;
+
+      // The counter may only ever go up, and only by one at a time, so the
+      // create quota can't be cleared by rewriting your own user document.
+      allow update: if signedIn() && userId == uid()
+        && request.resource.data.keys().hasOnly(['displayName', 'createdAt', 'challengesCreated'])
+        && unchanged('createdAt')
+        && (
+             request.resource.data.challengesCreated == resource.data.challengesCreated
+             || request.resource.data.challengesCreated == resource.data.challengesCreated + 1
+           );
+
       allow delete: if false;
     }
 
     // -------------------------------------------------------------------------
-    // Challenges + subcollections
+    // slugIndex — resolves a shared link to a challenge id
     // -------------------------------------------------------------------------
-    match /challenges/{challengeId} {
-      allow read: if true;
-      allow create: if isValidChallenge(request.resource.data);
-      allow update: if isValidChallenge(request.resource.data);
-      allow delete: if false;
 
-      // Members
+    match /slugIndex/{slug} {
+      // Anyone signed in can resolve a link they were given. Listing is denied,
+      // so slugs cannot be harvested in bulk.
+      allow get: if signedIn();
+      allow list: if false;
+
+      // Create only, pointing only at a challenge you already own — so the
+      // challenge document must be written first. Never updatable, so a live
+      // link can never be repointed at somebody else's challenge.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['challengeId'])
+        && request.resource.data.challengeId is string
+        && isOwner(request.resource.data.challengeId)
+        && challengeData(request.resource.data.challengeId).slug == slug;
+
+      allow update, delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // challenges
+    // -------------------------------------------------------------------------
+
+    match /challenges/{cid} {
+      // Anyone signed in holding the link can see the challenge itself — its
+      // name, dates and rules — so they can decide whether to join. Everything
+      // underneath is restricted to members. Enumeration is denied outright.
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+        && isValidChallenge(request.resource.data)
+        && request.resource.data.ownerUid == uid();
+
+      // Only the owner may edit, and the three things that establish identity
+      // can never move: ownership, the slug, and the creation time.
+      allow update: if isOwner(cid)
+        && isValidChallenge(request.resource.data)
+        && unchanged('ownerUid')
+        && unchanged('slug')
+        && unchanged('createdAt');
+
+      allow delete: if isOwner(cid);
+
+      // ── membership — the authorization record, keyed by uid ────────────────
+      match /membership/{userId} {
+        allow get, list: if isOwnerOrMember(cid);
+
+        // You may only claim a slot for yourself, only on a slot that exists
+        // and is currently unclaimed, and only while the challenge is running.
+        allow create: if signedIn()
+          && userId == uid()
+          && request.resource.data.keys().hasOnly(['memberId', 'joinedAt'])
+          && request.resource.data.memberId is string
+          && slotClaimableBy(cid, request.resource.data.memberId);
+
+        // Rewriting the identical claim is a no-op, so a client that retries
+        // blindly after a partial failure succeeds instead of wedging. The
+        // slot itself cannot change: switching means releasing and re-claiming.
+        allow update: if signedIn()
+          && userId == uid()
+          && request.resource.data.keys().hasOnly(['memberId', 'joinedAt'])
+          && unchanged('memberId');
+
+        // You can leave; the owner can remove you.
+        allow delete: if isOwner(cid) || (signedIn() && userId == uid());
+      }
+
+      // ── members — the roster ──────────────────────────────────────────────
       match /members/{memberId} {
-        allow read: if true;
-        allow create, update: if isValidMember(request.resource.data);
+        // Readable by anyone signed in who has the challenge id, so an invited
+        // person can see the roster and find their name before joining.
+        allow get, list: if signedIn();
+
+        allow create: if isOwner(cid)
+          && isValidMember(request.resource.data)
+          && request.resource.data.uid == null;
+
+        // The owner administers the roster. Separately, an account may write
+        // its own uid onto a free slot — that is the claim, and it may change
+        // nothing else.
+        allow update: if isValidMember(request.resource.data)
+          && (
+               (isOwner(cid) && unchangedClaim(memberId))
+               || claimingFreeSlot()
+               || releasingOwnSlot()
+             );
+
         allow delete: if false;
       }
 
-      // Entries
+      // ── entries ───────────────────────────────────────────────────────────
       match /entries/{entryId} {
-        allow read: if true;
-        allow create, update: if isValidEntry(request.resource.data);
-        allow delete: if false;
+        allow get, list: if isOwnerOrMember(cid);
+
+        // You may only write your own days. The owner may correct anyone's,
+        // which is what the audit log is for.
+        allow create: if isValidEntry(request.resource.data)
+          && ownsEntry(cid, request.resource.data.memberId);
+
+        // Who and when an entry is for can never change — an edit that could
+        // move a day to another member or another date is a rewrite, not a fix.
+        allow update: if isValidEntry(request.resource.data)
+          && ownsEntry(cid, resource.data.memberId)
+          && unchanged('memberId')
+          && unchanged('date');
+
+        allow delete: if isOwner(cid);
       }
 
-      // Audit log — append-only; no updates or deletes ever
+      // ── auditLog — append only ────────────────────────────────────────────
       match /auditLog/{logId} {
-        allow read: if true;
-        allow create: if isValidAuditLog(request.resource.data);
+        allow get, list: if isOwnerOrMember(cid);
+
+        // An entry can only be written in your own name, and can only claim
+        // owner authority if you actually are the owner. Otherwise history is
+        // forgeable, and history is the only accountability this app has.
+        allow create: if isOwnerOrMember(cid)
+          && isValidAuditLog(request.resource.data)
+          && request.resource.data.actorUid == uid()
+          && (request.resource.data.actorIsOwner == false || isOwner(cid));
+
         allow update, delete: if false;
       }
+    }
+
+    // =========================================================================
+    // Predicates
+    // =========================================================================
+
+    /**
+     * Claiming touches two documents — the membership record and the member
+     * slot — and they can land in either order, or one can fail. So a slot is
+     * claimable when nobody holds it *or* when you already do. A slot held by
+     * somebody else is never claimable, which is the part that matters.
+     */
+    function slotClaimableBy(cid, memberId) {
+      return exists(/databases/$(database)/documents/challenges/$(cid)/members/$(memberId))
+        && (
+             get(/databases/$(database)/documents/challenges/$(cid)/members/$(memberId)).data.uid == null
+             || get(/databases/$(database)/documents/challenges/$(cid)/members/$(memberId)).data.uid == uid()
+           );
+    }
+
+    /** True when an owner edit leaves the slot's account binding alone. */
+    function unchangedClaim(memberId) {
+      return request.resource.data.uid == resource.data.uid;
+    }
+
+    /** Writing your own uid onto a slot nobody holds, and touching nothing else. */
+    function claimingFreeSlot() {
+      return signedIn()
+        && resource.data.uid == null
+        && request.resource.data.uid == uid()
+        && changed().hasOnly(['uid']);
+    }
+
+    /** Letting go of a slot you hold, and touching nothing else. */
+    function releasingOwnSlot() {
+      return signedIn()
+        && resource.data.uid == uid()
+        && request.resource.data.uid == null
+        && changed().hasOnly(['uid']);
+    }
+
+    /** The entry is yours, or you own the challenge. */
+    function ownsEntry(cid, memberId) {
+      return isOwner(cid) || (isMember(cid) && myMemberId(cid) == memberId);
     }
 
     // =========================================================================
@@ -49,28 +292,27 @@ service cloud.firestore {
     // =========================================================================
 
     function isValidChallenge(d) {
-      return d.keys().hasAll([
-          'slug', 'name', 'createdAt', 'status',
-          'ownerPasswordHash', 'ownerPasswordSalt', 'config'
-        ])
-        && d.slug is string && d.slug.size() > 0
-        && d.name is string && d.name.size() > 0
+      return d.keys().hasAll(['slug', 'name', 'createdAt', 'status', 'ownerUid', 'config'])
+        && d.keys().hasOnly(['slug', 'name', 'createdAt', 'status', 'ownerUid', 'config'])
+        && d.slug is string && d.slug.size() > 0 && d.slug.size() <= 32
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 100
         && d.status in ['active', 'ended']
-        && d.ownerPasswordHash is string
-        && d.ownerPasswordSalt is string
+        && d.ownerUid is string && d.ownerUid.size() > 0
         && d.config is map
         && d.config.keys().hasAll(['startDate', 'weekAnchor', 'timezone', 'rules'])
         && d.config.startDate is string
         && d.config.weekAnchor is string
         && d.config.timezone is string
-        && d.config.rules is list;
+        && d.config.rules is list
+        && d.config.rules.size() <= 50;
     }
 
     function isValidMember(d) {
-      return d.keys().hasAll(['name', 'createdAt', 'active', 'removedAt'])
-        && d.name is string && d.name.size() > 0
+      return d.keys().hasAll(['name', 'createdAt', 'active', 'removedAt', 'uid'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 60
         && d.active is bool
-        && (d.removedAt == null || d.removedAt is timestamp);
+        && (d.removedAt == null || d.removedAt is timestamp)
+        && (d.uid == null || (d.uid is string && d.uid.size() > 0));
     }
 
     function isValidEntry(d) {
@@ -80,15 +322,16 @@ service cloud.firestore {
         ])
         && d.memberId is string
         && d.date is string && d.date.size() == 10
-        && d.values is map
+        && d.values is map && d.values.size() <= 50
         && d.pts is number
         && (d.createdByMemberId == null || d.createdByMemberId is string);
     }
 
     function isValidAuditLog(d) {
-      return d.keys().hasAll(['timestamp', 'actorIsOwner', 'action', 'target'])
+      return d.keys().hasAll(['timestamp', 'actorUid', 'actorIsOwner', 'action', 'target'])
+        && d.actorUid is string
         && d.actorIsOwner is bool
-        && d.action is string
+        && d.action is string && d.action.size() <= 64
         && d.target is map
         && d.target.keys().hasAll(['kind', 'id'])
         && d.target.kind in ['challenge', 'member', 'entry'];

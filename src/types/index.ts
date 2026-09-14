@@ -6,6 +6,7 @@
  *   rule.ts          — Rule discriminated union + type guards
  *   challenge.ts     — Challenge, ChallengeConfig, ChallengeStatus, SlugIndexEntry
  *   member.ts        — Member + MemberTrackerConfig + TrackerDirection
+ *   membership.ts    — Membership (the uid-keyed authorization record)
  *   entry.ts         — Entry + RawEntryValue + per-kind value types + validators
  *   audit.ts         — AuditLogEntry + AuditAction + AuditTarget
  *   aggregates.ts    — Computed (not stored): EvaluatedEntry, MemberStanding,
@@ -16,6 +17,7 @@
 export * from "./rule";
 export * from "./challenge";
 export * from "./member";
+export * from "./membership";
 export * from "./entry";
 export * from "./audit";
 export * from "./aggregates";

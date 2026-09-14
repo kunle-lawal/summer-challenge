@@ -66,6 +66,12 @@ export interface AuditLogEntry {
   /** When the action occurred. Server timestamp on write. */
   timestamp: Timestamp;
   /**
+   * The account that performed the action. Enforced by the security rules to
+   * equal the caller's own uid, so unlike `actorMemberId` this is evidence
+   * rather than attribution.
+   */
+  actorUid: string;
+  /**
    * The memberId selected on the actor's device when they performed the
    * action. Null when no member is selected (e.g. creating a challenge,
    * owner.login attempts before picking a member).
