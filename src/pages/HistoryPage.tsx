@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
 import { activeRules, type Entry } from '@/types';
-import { addDays, compareDates, todayInTz } from '@/lib/dates';
+import { addDays, compareDates, formatDateLabel, todayInTz } from '@/lib/dates';
 import { evaluateEntry } from '@/lib/rules/evaluate';
 import { formatPoints, isLogged } from '@/lib/rules/display';
 import { Body, Sheet, TopBar } from '@/components/layout/Screen';
@@ -45,9 +45,7 @@ const DayPoints = styled(Points)`
 `;
 
 function dayLabel(date: string, today: string): string {
-  const pretty = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
-  });
+  const pretty = formatDateLabel(date, { weekday: true, today });
   if (date === today) return `Today · ${pretty}`;
   if (date === addDays(today, -1)) return `Yesterday · ${pretty}`;
   return pretty;

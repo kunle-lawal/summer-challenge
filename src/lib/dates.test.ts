@@ -1,17 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
-  formatInTz,
-  todayInTz,
-  yesterdayInTz,
   addDays,
-  diffDays,
   compareDates,
+  countConsecutiveDaysAtEnd,
+  diffDays,
+  formatDateLabel,
+  formatInTz,
   getWeekNumber,
   getWeekWindow,
-  isWithinEditWindow,
   isToday,
+  isWithinEditWindow,
   isYesterday,
-  countConsecutiveDaysAtEnd,
+  todayInTz,
+  yesterdayInTz,
 } from './dates';
 
 // ---------------------------------------------------------------------------
@@ -334,5 +335,39 @@ describe('countConsecutiveDaysAtEnd', () => {
     expect(
       countConsecutiveDaysAtEnd(['2024-05-30', '2024-05-31', '2024-06-01']),
     ).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatDateLabel
+// ---------------------------------------------------------------------------
+
+describe('formatDateLabel', () => {
+  it('gives a short month and day by default', () => {
+    expect(formatDateLabel('2026-11-15', { today: '2026-09-14' })).toBe('Nov 15');
+  });
+
+  it('adds the weekday when asked', () => {
+    expect(formatDateLabel('2026-11-15', { weekday: true, today: '2026-09-14' })).toBe('Sun, Nov 15');
+  });
+
+  it('adds the year only when it is not the current one', () => {
+    expect(formatDateLabel('2027-01-04', { today: '2026-09-14' })).toBe('Jan 4, 2027');
+    expect(formatDateLabel('2026-01-04', { today: '2026-09-14' })).toBe('Jan 4');
+  });
+
+  it('can be told to always or never show the year', () => {
+    expect(formatDateLabel('2026-11-15', { year: 'always', today: '2026-09-14' })).toBe('Nov 15, 2026');
+    expect(formatDateLabel('2027-11-15', { year: 'never', today: '2026-09-14' })).toBe('Nov 15');
+  });
+
+  /*
+   * The whole reason dates are parsed at midday UTC: a date-only string parsed
+   * as local midnight lands on the previous day for anyone west of Greenwich,
+   * so the label would disagree with the date it came from.
+   */
+  it('names the same day the string does, either side of midnight', () => {
+    expect(formatDateLabel('2026-01-01', { today: '2026-06-01' })).toBe('Jan 1');
+    expect(formatDateLabel('2026-12-31', { today: '2026-06-01' })).toBe('Dec 31');
   });
 });

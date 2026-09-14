@@ -5,7 +5,7 @@ import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
 import { useAdminMode } from '@/context/AdminModeContext';
 import { activeRules } from '@/types';
-import { addDays, getWeekWindow, todayInTz } from '@/lib/dates';
+import { addDays, getWeekWindow, todayInTz, weekdayInitial } from '@/lib/dates';
 import { buildLeaderboard, getLoggedDayStreak } from '@/lib/rules/aggregate';
 import { formatPoints } from '@/lib/rules/display';
 import { removeMember, restoreMember } from '@/lib/members';
@@ -142,7 +142,7 @@ export function MemberProfilePage() {
       const date = addDays(week.start, i);
       return {
         date,
-        letter: new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'narrow', timeZone: 'UTC' }),
+        letter: weekdayInitial(date),
         on: loggedDates.has(date),
         future: date > today,
       };
