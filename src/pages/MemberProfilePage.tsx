@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import styled from 'styled-components';
+import styled, { useTheme } from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
 import { useAdminMode } from '@/context/AdminModeContext';
@@ -99,7 +99,7 @@ const Day = styled.div<{ $on: boolean; $future: boolean }>`
   font-weight: 600;
   background: ${({ theme, $on }) => ($on ? theme.color.ink : theme.color.surface)};
   border: 1px solid ${({ theme, $on }) => ($on ? theme.color.ink : theme.color.hair)};
-  color: ${({ theme, $on }) => ($on ? '#fff' : theme.color.ink3)};
+  color: ${({ theme, $on }) => ($on ? theme.color.onInk : theme.color.ink3)};
   opacity: ${({ $future }) => ($future ? 0.45 : 1)};
 
   b { font-family: ${({ theme }) => theme.font.display}; font-weight: 600; font-size: 13px; }
@@ -117,6 +117,7 @@ export function MemberProfilePage() {
   const { isAdmin } = useAdminMode();
   const { memberId } = useParams<{ memberId: string }>();
   const navigate = useNavigate();
+  const theme = useTheme();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -231,7 +232,7 @@ export function MemberProfilePage() {
               <b><Count value={standing?.totalPoints ?? 0} decimals={1} /></b>
               <Label>Points</Label>
             </div>
-            <Ring value={Math.min(streak, 7)} max={7} size={58} stroke={6} track="#efece6" color="#cf5230">
+            <Ring value={Math.min(streak, 7)} max={7} size={58} stroke={6} track={theme.color.hair3} color={theme.color.accent}>
               <RingLabel>
                 {streak}<small>/7</small>
               </RingLabel>
@@ -263,7 +264,7 @@ export function MemberProfilePage() {
                         <Bar
                           value={Math.abs(points)}
                           max={maxAbs}
-                          color={points < 0 ? '#a83226' : '#17181c'}
+                          color={points < 0 ? theme.color.bad : theme.color.ink}
                         />
                       </span>
                       <span className="pts">{formatPoints(points)}</span>

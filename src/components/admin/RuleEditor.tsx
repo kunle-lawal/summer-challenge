@@ -76,8 +76,8 @@ const KindCard = styled.button`
   &[aria-pressed='true'] {
     background: ${({ theme }) => theme.color.ink};
     border-color: ${({ theme }) => theme.color.ink};
-    color: #fff;
-    span { color: #b9bac0; }
+    color: ${({ theme }) => theme.color.onInk};
+    span { color: ${({ theme }) => theme.color.onInk2}; }
   }
 `;
 

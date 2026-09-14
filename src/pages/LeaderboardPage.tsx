@@ -91,7 +91,7 @@ const Plinth = styled(Link)<{ $place: 1 | 2 | 3 }>`
   }
 
   &:hover > .blk {
-    background: ${({ theme, $place }) => ($place === 1 ? '#f8e0d6' : theme.color.surface2)};
+    background: ${({ theme, $place }) => ($place === 1 ? theme.color.accentSoftHover : theme.color.surface2)};
   }
 `;
 

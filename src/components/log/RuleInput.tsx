@@ -52,9 +52,9 @@ const FreePass = styled.button`
   &[aria-pressed='true'] {
     background: ${({ theme }) => theme.color.ink};
     border-color: ${({ theme }) => theme.color.ink};
-    color: #fff;
-    svg { color: #f0c46a; }
-    > .t small { color: #b9bac0; }
+    color: ${({ theme }) => theme.color.onInk};
+    svg { color: ${({ theme }) => theme.color.goldOnInk}; }
+    > .t small { color: ${({ theme }) => theme.color.onInk2}; }
   }
 
   &:disabled {

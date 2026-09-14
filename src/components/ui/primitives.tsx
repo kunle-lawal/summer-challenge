@@ -80,9 +80,9 @@ const buttonTone = {
   ink: css`
     background: ${({ theme }) => theme.color.ink};
     border-color: ${({ theme }) => theme.color.ink};
-    color: #fff;
+    color: ${({ theme }) => theme.color.onInk};
     &:hover:not(:disabled) { background: ${({ theme }) => theme.color.panel2}; border-color: ${({ theme }) => theme.color.panel2}; }
-    &:active:not(:disabled) { background: #000; border-color: #000; }
+    &:active:not(:disabled) { background: ${({ theme }) => theme.color.inkPress}; border-color: ${({ theme }) => theme.color.inkPress}; }
   `,
   ghost: css`
     background: ${({ theme }) => theme.color.surface};
@@ -101,7 +101,7 @@ const buttonTone = {
     background: ${({ theme }) => theme.color.surface};
     border-color: ${({ theme }) => theme.color.badLine};
     color: ${({ theme }) => theme.color.bad};
-    &:hover:not(:disabled) { background: ${({ theme }) => theme.color.badSoft}; border-color: #dda9a2; }
+    &:hover:not(:disabled) { background: ${({ theme }) => theme.color.badSoft}; border-color: ${({ theme }) => theme.color.badLineHover}; }
   `,
 } as const;
 
@@ -320,7 +320,7 @@ export const Row = styled.div<{ $you?: boolean; $lead?: boolean; $off?: boolean;
     transition: background 0.16s ${({ theme }) => theme.ease.out}, border-color 0.16s;
 
     &:hover {
-      background: ${({ theme, $you }) => ($you ? '#f8e0d6' : theme.color.surface2)};
+      background: ${({ theme, $you }) => ($you ? theme.color.accentSoftHover : theme.color.surface2)};
       border-color: ${({ theme, $you }) => ($you ? theme.color.accentLine : theme.color.hair2)};
     }
     &:active { background: ${({ theme }) => theme.color.hair3}; }
@@ -359,7 +359,7 @@ export const Tick = styled.span<{ $done?: boolean }>`
   place-items: center;
   background: ${({ theme, $done }) => ($done ? theme.color.ink : theme.color.surface)};
   border: 1px solid ${({ theme, $done }) => ($done ? theme.color.ink : theme.color.hair)};
-  color: ${({ theme, $done }) => ($done ? '#fff' : theme.color.ink3)};
+  color: ${({ theme, $done }) => ($done ? theme.color.onInk : theme.color.ink3)};
   transition: background 0.18s ${({ theme }) => theme.ease.out}, border-color 0.18s, color 0.18s;
 
   svg { width: 14px; height: 14px; stroke-width: 2.4; }
@@ -461,8 +461,8 @@ export const Choice = styled.button`
   &[aria-pressed='true'] {
     background: ${({ theme }) => theme.color.ink};
     border-color: ${({ theme }) => theme.color.ink};
-    color: #fff;
-    small { color: #b9bac0; }
+    color: ${({ theme }) => theme.color.onInk};
+    small { color: ${({ theme }) => theme.color.onInk2}; }
   }
 `;
 
@@ -489,7 +489,7 @@ export const Chip = styled.button`
   &[aria-pressed='true'] {
     background: ${({ theme }) => theme.color.ink};
     border-color: ${({ theme }) => theme.color.ink};
-    color: #fff;
+    color: ${({ theme }) => theme.color.onInk};
   }
 `;
 
@@ -554,7 +554,7 @@ export const Switch = styled.button`
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: #fff;
+    background: ${({ theme }) => theme.color.onInk};
     box-shadow: 0 1px 2px rgba(23, 24, 28, 0.2);
     transition: transform 0.22s ${({ theme }) => theme.ease.out};
   }

@@ -161,7 +161,7 @@ const ProgressWrap = styled.div`
       font-size: 11px;
       line-height: 16px;
       font-weight: 600;
-      color: #fff;
+      color: ${({ theme }) => theme.color.onInk};
       flex: 0 0 auto;
       ${tnum}
     }
@@ -232,7 +232,7 @@ const StatCell = styled.div<{ $hot?: boolean }>`
     font-size: 19px;
     line-height: 26px;
     letter-spacing: -0.025em;
-    color: ${({ $hot }) => ($hot ? '#f0a184' : '#fff')};
+    color: ${({ theme, $hot }) => ($hot ? theme.color.accentOnPanel : theme.color.onInk)};
     ${tnum}
   }
 
@@ -306,8 +306,8 @@ export const WhoAmI = styled.button`
   cursor: pointer;
   transition: background 0.16s, color 0.16s;
 
-  b { color: #fff; font-weight: 600; }
+  b { color: ${({ theme }) => theme.color.onInk}; font-weight: 600; }
   svg { width: 14px; height: 14px; stroke-width: 2; }
 
-  &:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
+  &:hover { background: rgba(255, 255, 255, 0.13); color: ${({ theme }) => theme.color.onInk}; }
 `;

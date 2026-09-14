@@ -189,7 +189,7 @@ export function Mark({ size = 72, happy = false, face, accent }: { size?: number
 // Empty / error state
 // ---------------------------------------------------------------------------
 
-const EmptyWrap = styled.div`
+const EmptyWrap = styled.div<{ $muted?: boolean }>`
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -198,7 +198,7 @@ const EmptyWrap = styled.div`
   gap: 14px;
   padding: 32px 24px;
   text-align: center;
-  color: ${({ theme }) => theme.color.accent};
+  color: ${({ theme, $muted }) => ($muted ? theme.color.ink4 : theme.color.accent)};
 
   h2 { font-size: 19px; line-height: 26px; color: ${({ theme }) => theme.color.ink}; }
 
@@ -221,7 +221,7 @@ interface EmptyStateProps {
 
 export function EmptyState({ title, body, action, muted }: EmptyStateProps) {
   return (
-    <EmptyWrap style={muted ? { color: '#a9aab2' } : undefined}>
+    <EmptyWrap $muted={muted}>
       <Mark size={80} />
       <h2>{title}</h2>
       <p>{body}</p>
@@ -352,7 +352,7 @@ const ToastWrap = styled.div`
   max-width: ${({ theme }) => theme.size.contentMax};
   z-index: 40;
   background: ${({ theme }) => theme.color.ink};
-  color: #fff;
+  color: ${({ theme }) => theme.color.onInk};
   border-radius: ${({ theme }) => theme.radii.md};
   padding: 12px 8px 12px 16px;
   display: flex;
@@ -366,9 +366,9 @@ const ToastWrap = styled.div`
   > span { flex: 1; min-width: 0; }
 
   ${LinkButton} {
-    color: #f3b49a;
+    color: ${({ theme }) => theme.color.accentOnInk};
     flex: 0 0 auto;
-    &:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+    &:hover { background: rgba(255, 255, 255, 0.12); color: ${({ theme }) => theme.color.onInk}; }
   }
 `;
 

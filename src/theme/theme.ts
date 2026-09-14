@@ -66,6 +66,22 @@ export interface AppTheme {
     accentLine: string;
     /** Text on a solid `accent` fill. */
     accentInk: string;
+    /** Accent wash on hover. */
+    accentSoftHover: string;
+    /** Accent lightened to clear 4.5:1 on the dark panel. */
+    accentOnPanel: string;
+    /** Accent lightened to clear 4.5:1 on an ink surface. */
+    accentOnInk: string;
+
+    // ── On dark surfaces ──────────────────────────────────────────────────
+    /** Text and fills on ink, accent or panel backgrounds. */
+    onInk: string;
+    /** Secondary text on those same backgrounds. */
+    onInk2: string;
+    /** Ink pressed. */
+    inkPress: string;
+    /** Gold lightened for use on ink. */
+    goldOnInk: string;
 
     // ── Semantic ──────────────────────────────────────────────────────────
     good: string;
@@ -74,17 +90,9 @@ export interface AppTheme {
     bad: string;
     badSoft: string;
     badLine: string;
+    badLineHover: string;
     gold: string;
 
-    // ── Legacy aliases ────────────────────────────────────────────────────
-    // Kept so un-ported components keep compiling and pick up the new palette
-    // for free. Removed in the final phase once nothing references them.
-    /** @deprecated use `accentSoft` */
-    accentTint: string;
-    /** @deprecated use `goodSoft` */
-    goodTint: string;
-    /** @deprecated use `badSoft` */
-    badTint: string;
   };
   tone: Record<ToneName, ToneColors>;
   font: {
@@ -148,6 +156,14 @@ export const appTheme: AppTheme = {
     accentSoft: '#fbeae3',
     accentLine: '#f2d6c9',
     accentInk: '#ffffff',
+    accentSoftHover: '#f8e0d6',
+    accentOnPanel: '#f0a184',
+    accentOnInk: '#f3b49a',
+
+    onInk: '#ffffff',
+    onInk2: '#b9bac0',
+    inkPress: '#000000',
+    goldOnInk: '#f0c46a',
 
     good: '#2f6b4f',
     goodSoft: '#e8f1eb',
@@ -155,11 +171,9 @@ export const appTheme: AppTheme = {
     bad: '#a83226',
     badSoft: '#fbeae8',
     badLine: '#e7c4bf',
+    badLineHover: '#dda9a2',
     gold: '#8a6d1f',
 
-    accentTint: '#fbeae3',
-    goodTint: '#e8f1eb',
-    badTint: '#fbeae8',
   },
   tone: {
     sky: { bg: '#e4eaf2', ink: '#33486f' },

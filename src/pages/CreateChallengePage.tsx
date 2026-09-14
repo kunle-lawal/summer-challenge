@@ -44,7 +44,7 @@ const NumHead = styled.div`
     font-weight: 600;
     font-size: 13px;
     background: ${({ theme }) => theme.color.ink};
-    color: #fff;
+    color: ${({ theme }) => theme.color.onInk};
     ${tnum}
   }
 `;

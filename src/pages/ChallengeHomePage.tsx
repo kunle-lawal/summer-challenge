@@ -166,7 +166,7 @@ const GoalCard = styled.button`
       margin-left: -7px;
       border-radius: 50%;
       background: ${({ theme }) => theme.color.accent};
-      border: 2px solid #fff;
+      border: 2px solid ${({ theme }) => theme.color.onInk};
       transform: translateY(-50%);
       transition: left 0.6s ${({ theme }) => theme.ease.out};
     }
