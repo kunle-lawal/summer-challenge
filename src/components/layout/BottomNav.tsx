@@ -1,83 +1,79 @@
 import { NavLink } from 'react-router-dom';
 import styled from 'styled-components';
-import { HomeIcon, LogIcon, BoardIcon, HistoryIcon } from '@/components/ui/Icons';
+import { Icon, type IconName } from '@/components/ui/Icons';
+
+/**
+ * Primary navigation. Four tabs, per the design.
+ *
+ * Log day is deliberately not a tab — it's the primary call to action on Home,
+ * which is what the Home screen is built around. Recorded in
+ * docs/REDESIGN_DECISIONS.md.
+ */
 
 const Nav = styled.nav`
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  /* Total height = 64px + iOS home indicator area */
-  height: calc(64px + env(safe-area-inset-bottom, 0px));
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  flex: 0 0 auto;
+  display: flex;
   gap: 4px;
-  background: linear-gradient(180deg, rgba(255,253,246,0) 0%, ${({ theme }) => theme.color.surface} 35%);
-  z-index: 50;
-
-  @media (min-width: 768px) {
-    display: none;
-  }
+  padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: ${({ theme }) => theme.color.surface};
+  border-top: 1px solid ${({ theme }) => theme.color.hair};
 `;
 
-const Item = styled(NavLink)`
+const Tab = styled(NavLink)`
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  border-radius: ${({ theme }) => theme.radii.sm};
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  color: ${({ theme }) => theme.color.ink3};
-  font-family: ${({ theme }) => theme.font.body};
-  font-size: 10px;
-  font-weight: 500;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 6px 4px;
+  color: ${({ theme }) => theme.color.ink3};
   text-decoration: none;
+  transition: color 0.18s;
 
-  svg {
-    width: 22px;
-    height: 22px;
-    stroke: currentColor;
-    stroke-width: 1.6;
-    fill: none;
-  }
+  svg { width: 21px; height: 21px; stroke-width: 1.8; }
 
+  &:hover { color: ${({ theme }) => theme.color.ink}; text-decoration: none; }
+
+  /* State is carried by weight and colour together, never colour alone (§3). */
   &.active {
     color: ${({ theme }) => theme.color.ink};
-
-    svg {
-      stroke: ${({ theme }) => theme.color.ink};
-    }
+    svg { stroke-width: 2.2; }
   }
 `;
 
-interface Props {
-  slug: string;
-}
+const TABS: { to: string; label: string; icon: IconName; end?: boolean }[] = [
+  { to: '', label: 'Home', icon: 'home', end: true },
+  { to: 'board', label: 'Board', icon: 'board' },
+  { to: 'history', label: 'History', icon: 'history' },
+  { to: 'rules', label: 'Rules', icon: 'rules' },
+];
 
-export function BottomNav({ slug }: Props) {
-  const base = `/c/${slug}`;
+export function BottomNav({ slug }: { slug: string }) {
   return (
-    <Nav>
-      <Item to={`${base}/home`}>
-        <HomeIcon />
-        <span>Home</span>
-      </Item>
-      <Item to={base} end>
-        <LogIcon />
-        <span>Log</span>
-      </Item>
-      <Item to={`${base}/board`}>
-        <BoardIcon />
-        <span>Board</span>
-      </Item>
-      <Item to={`${base}/history`}>
-        <HistoryIcon />
-        <span>History</span>
-      </Item>
+    <Nav aria-label="Main">
+      {TABS.map(t => (
+        <Tab
+          key={t.label}
+          to={t.to ? `/c/${slug}/${t.to}` : `/c/${slug}`}
+          end={t.end}
+          className={({ isActive }) => (isActive ? 'active' : '')}
+        >
+          {({ isActive }) => (
+            <>
+              <Icon name={t.icon} aria-current={isActive ? 'page' : undefined} />
+              {t.label}
+            </>
+          )}
+        </Tab>
+      ))}
     </Nav>
   );
 }

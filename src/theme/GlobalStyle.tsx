@@ -87,10 +87,6 @@ export const GlobalStyle = createGlobalStyle`
     border-radius: 6px;
   }
 
-  [data-on-panel] :focus-visible {
-    outline-color: ${({ theme }) => theme.color.onPanel};
-  }
-
   /* iOS Safari zooms on focus below 16px. This is the substantive reason
      behind the 16px body-text floor, and it applies to inputs specifically. */
   @media (max-width: 768px) {
