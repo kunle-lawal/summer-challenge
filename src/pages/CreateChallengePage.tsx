@@ -6,7 +6,9 @@ import type { ChallengeConfig, Rule } from '@/types';
 import { createChallenge } from '@/lib/challenges';
 import { addMember } from '@/lib/members';
 import { getCooldownRemainingMs, isOnCooldown } from '@/lib/createCooldown';
-import { CHALLENGE_TEMPLATES, DEFAULT_TEMPLATE_ID } from '@/lib/rules/templates';
+import {
+  CHALLENGE_TEMPLATES, DEFAULT_TEMPLATE_ID, ceilingOf, passSummary, templatesByFocus,
+} from '@/lib/rules/templates';
 import { formatRuleFormula } from '@/lib/rules/ruleDocs';
 import { addDays, todayInTz } from '@/lib/dates';
 import { Body, FootBar, Screen, Sheet, TopBar } from '@/components/layout/Screen';
@@ -16,7 +18,7 @@ import { MemberBadge } from '@/components/ui/MemberBadge';
 import { RuleTile, Tile } from '@/components/ui/Tile';
 import { RuleEditor } from '@/components/admin/RuleEditor';
 import {
-  AddRow, Button, Card, ErrorText, Field, Hint, IconButton, Input, List,
+  AddRow, Button, Card, ErrorText, Field, Hint, IconButton, Input, Label, List,
   Meta, Name, Pill, Row, Select, tnum,
 } from '@/components/ui/primitives';
 
@@ -358,32 +360,43 @@ export function CreateChallengePage() {
               </div>
             </NumHead>
             <Stack>
-              <div role="group" aria-label="Starting rules" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {CHALLENGE_TEMPLATES.map(t => (
-                  <TemplateCard
-                    key={t.id}
-                    type="button"
-                    aria-pressed={templateId === t.id}
-                    onClick={() => useTemplate(t.id)}
-                  >
-                    <span className="hd">
-                      <b>{t.name}</b>
-                      <Meta>{t.weeks} weeks</Meta>
-                    </span>
-                    <Meta>{t.tagline}</Meta>
-                    {t.ceiling > 0 && (
-                      <Facts>
-                        <Pill $tone="flat">{t.ceiling} pts if perfect</Pill>
-                        <Pill $tone="flat">{t.forgiveness}</Pill>
-                      </Facts>
-                    )}
-                  </TemplateCard>
+              {/* Fourteen cards in one list is unreadable at phone width. */}
+              <div role="group" aria-label="Starting rules" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {templatesByFocus().map(group => (
+                  <div key={group.focus} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <Label>{group.focus}</Label>
+                    {group.templates.map(t => {
+                      const chosen = templateId === t.id;
+                      const built = t.build(() => 'x');
+                      const ceiling = Math.round(ceilingOf(built, t.weeks));
+                      const passes = passSummary(built, t.weeks);
+                      return (
+                        <TemplateCard
+                          key={t.id}
+                          type="button"
+                          aria-pressed={chosen}
+                          onClick={() => useTemplate(t.id)}
+                        >
+                          <span className="hd">
+                            <b>{t.name}</b>
+                            <Meta>{t.weeks} weeks</Meta>
+                          </span>
+                          <Meta>{t.tagline}</Meta>
+                          {ceiling > 0 && (
+                            <Facts>
+                              <Pill $tone="flat">{ceiling} pts if perfect</Pill>
+                              {passes && <Pill $tone="flat">{passes}</Pill>}
+                              <Pill $tone="flat">{t.forgiveness}</Pill>
+                            </Facts>
+                          )}
+                          {/* Only the chosen one earns the space for a paragraph. */}
+                          {chosen && <Hint style={{ marginTop: 4 }}>{t.blurb}</Hint>}
+                        </TemplateCard>
+                      );
+                    })}
+                  </div>
                 ))}
               </div>
-
-              {templateId !== '' && (
-                <Hint>{CHALLENGE_TEMPLATES.find(t => t.id === templateId)?.blurb}</Hint>
-              )}
 
               {rules.length === 0 ? (
                 <Hint>No rules yet — add at least one before you can create the challenge.</Hint>

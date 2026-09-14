@@ -134,35 +134,64 @@ Not verified, for want of a browser driver in this repo: actual pixel rendering,
 real-device touch behaviour, and the 200% zoom and 390px cases as rendered rather
 than as reasoned about.
 
+## Streak qualifiers
+
+`StreakRule.qualifier` decides what counts as a day toward a streak:
+
+- `'positive'` (default, and what every existing streak keeps) — the watched
+  rule scored above zero.
+- `'full'` — the watched rule earned everything it can award that day.
+
+This exists because a streak watching a **counter** was farmable: any value
+above zero scores, so a single logged step held a step streak open forever.
+`'full'` makes the day have to hit the target. Binary rules were never
+farmable — "No" scores zero and breaks the run — so nothing changes there.
+
+A free pass still counts as a full day. Holding a run together is what passes
+are for.
+
+The predicate lives once, in `kinds.ts` as `qualifiesForStreak`, because two
+places decide streak days — `computeStreakBonuses` for the leaderboard and
+`getStreakRunAtDate` for the pips on the log. They previously each carried their
+own `points > 0` check; if only one had learned about qualifiers, the log would
+have shown a run the board refused to pay for.
+
+The rule editor now warns when a streak watches a counter on `'positive'`, and
+when it watches a capped binary at all.
+
 ## Challenge templates
 
 `src/lib/rules/templates.ts` replaces the create screen's three-way preset
-segment with four described templates. Each carries its own suggested length,
-so picking one sets the end date too.
+segment with thirteen described templates plus an empty one, grouped by focus.
+Each carries its own suggested length, so picking one sets the end date too.
 
-| Template | Weeks | Ceiling | For |
-|---|---|---|---|
-| Lock In | 9 | 578 | The balanced default — gym, steps, sleep, food, two streaks, personal goal |
-| Base Camp | 8 | 530 | Unpredictable schedules; consistency over intensity |
-| Cut | 9 | 674 | A strict body-composition push where the personal goal decides it |
-| Start empty | 9 | — | Build your own |
+| Focus | Templates |
+|---|---|
+| Balanced | Lock In · Base Camp · Winter Arc |
+| Body composition | Cut · Recomp · Lean Season |
+| Endurance | Run Club · Marathon Build |
+| Habits & recovery | Reset · Clean Slate · Desk Job |
+| Mind | Deep Work · Whole Person |
 
-### Two constraints every template is tuned against
+### What every template is held to, by test
 
-**Streaks fire on days where the watched rule scored above zero.** That makes a
-streak on a **capped binary** break the instant the cap bites (a capped day
-scores 0), and a streak on a **counter** free to farm (one logged step keeps it
-alive). Base Camp's Move rule is deliberately uncapped for exactly this reason.
-`templates.test.ts` rejects both shapes.
+- **No single rule past a quarter of the ceiling.** Daily rules compound — +2 a
+  day is 140 points over ten weeks, which quietly dwarfs anything weekly-capped.
+  With two players there is nowhere to hide and one metric shouldn't settle it.
+  Four templates failed this on first write and were retuned.
+- **At least one free pass per week** on anything that can cost points, and
+  roughly two a week on the easygoing ones.
+- **No streak on a capped binary** (a capped day scores zero, so the run breaks
+  every time the cap bites), and **no streak on a counter without
+  `qualifier: 'full'`**.
+- **A personal goal in every one**, so the result turns on who moved furthest
+  from their own starting point rather than who started fitter.
 
-**Daily rules compound.** Over nine weeks a rule worth +2 a day is worth ~126
-points, which quietly dwarfs anything weekly-capped. Every template is budgeted
-so no single rule exceeds a quarter of its ceiling — with two people there is
-nowhere to hide, and one metric shouldn't settle it. That's a test too, and it
-fails if the numbers drift.
+### Numbers are computed, not written down
 
-Every template also carries a tracker, so the result turns on who moved furthest
-against their own starting point rather than who started fitter.
+`ceilingOf` and `passSummary` derive the figures on each card from the rules
+themselves. They were hand-written at first and had already drifted — one card
+claimed 13 free passes where the rules handed out 14.
 
 ## The create screen was unreachable
 

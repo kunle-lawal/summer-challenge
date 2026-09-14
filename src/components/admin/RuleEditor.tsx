@@ -10,7 +10,7 @@ import {
 import { FootBar, Sheet, TopBar } from '@/components/layout/Screen';
 import { Icon } from '@/components/ui/Icons';
 import {
-  Button, Card, ErrorText, Field, Hint, IconButton, Input, Label, LinkButton,
+  Button, Card, Choice, Choices, ErrorText, Field, Hint, IconButton, Input, Label, LinkButton,
   Meta, Name, Note, Select, Switch, riseAnim,
 } from '@/components/ui/primitives';
 
@@ -172,6 +172,9 @@ export function RuleEditor({ rule, allRules, onSave, onDelete, onClose, live }: 
   };
 
   const trackable = allRules.filter(r => r.id !== draft.id && r.kind !== 'streak');
+  const watched = draft.kind === 'streak' ? allRules.find(r => r.id === draft.ruleRef) : undefined;
+  const watchedIsCounter = watched?.kind === 'counter';
+  const watchedIsCapped = watched?.kind === 'binary' && !!watched.weeklyCap;
 
   const save = () => {
     const name = draft.name.trim();
@@ -327,6 +330,45 @@ export function RuleEditor({ rule, allRules, onSave, onDelete, onClose, live }: 
               <NumField id="r-days" label="Days in a row" min={1} value={draft.daysRequired} onChange={n => set('daysRequired', Math.max(1, Math.round(n)))} />
               <NumField id="r-bonus" label="Bonus points" step="0.5" value={draft.bonusPoints} onChange={n => set('bonusPoints', n)} />
             </Grid>
+
+            <Label>What counts as a day</Label>
+            <Choices role="group" aria-labelledby="qualifier-label">
+              <Choice
+                type="button"
+                aria-pressed={(draft.qualifier ?? 'positive') === 'positive'}
+                onClick={() => set('qualifier', 'positive')}
+              >
+                Any scoring day
+                <small>Scored above zero</small>
+              </Choice>
+              <Choice
+                type="button"
+                aria-pressed={draft.qualifier === 'full'}
+                onClick={() => set('qualifier', 'full')}
+              >
+                Only full days
+                <small>Earned the maximum</small>
+              </Choice>
+            </Choices>
+            {watchedIsCounter && (draft.qualifier ?? 'positive') === 'positive' ? (
+              <ErrorText role="alert">
+                {watched?.name} is a counter, so any value above zero scores — a single unit
+                logged would keep this streak alive. Pick “Only full days”.
+              </ErrorText>
+            ) : (
+              <Hint>
+                {draft.qualifier === 'full'
+                  ? 'A day only counts if it earned everything the watched rule can award. A free pass still counts.'
+                  : 'A day counts whenever the watched rule scored anything at all.'}
+              </Hint>
+            )}
+
+            {watchedIsCapped && (
+              <ErrorText role="alert">
+                {watched?.name} has a weekly cap. Capped days score zero, so this streak would
+                break every time the cap is reached. Remove the cap or watch another rule.
+              </ErrorText>
+            )}
             <ToggleCard>
               <div className="row">
                 <Name>

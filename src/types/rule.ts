@@ -181,8 +181,24 @@ export interface PenaltyRule extends BaseRule {
 // ---------------------------------------------------------------------------
 
 /**
+ * What a day has to do to count toward a streak.
+ *
+ *  - `'positive'` — the watched rule scored anything above zero. Fine for a
+ *    yes/no habit or a clean-day penalty, where scoring at all means you did
+ *    the thing.
+ *  - `'full'` — the watched rule earned everything it can award in a day. This
+ *    is what a counter needs: without it, logging a single step scores above
+ *    zero and keeps a step streak alive indefinitely.
+ *
+ * Absent means `'positive'`, so streaks written before this existed are
+ * unchanged.
+ */
+export const STREAK_QUALIFIERS = ['positive', 'full'] as const;
+export type StreakQualifier = (typeof STREAK_QUALIFIERS)[number];
+
+/**
  * A derived bonus rule — awards `bonusPoints` when the member has
- * `daysRequired` consecutive days where the referenced rule scored positive.
+ * `daysRequired` consecutive qualifying days on the referenced rule.
  *
  * Streak rules do NOT have an entry value. They are computed during
  * aggregation by looking back across a member's entries. The points are
@@ -203,6 +219,11 @@ export interface StreakRule extends BaseRule {
   bonusPoints: number;
   /** Whether the bonus can re-trigger every `daysRequired` days. */
   repeatable: boolean;
+  /**
+   * What counts as a qualifying day. Defaults to `'positive'`.
+   * Use `'full'` when watching a counter, or the streak is farmable.
+   */
+  qualifier?: StreakQualifier;
 }
 
 // ---------------------------------------------------------------------------

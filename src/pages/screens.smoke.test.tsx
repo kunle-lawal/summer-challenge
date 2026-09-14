@@ -455,11 +455,20 @@ describe('Create challenge', () => {
     expect(html).toContain('Password and people');
   });
 
-  it('offers every challenge template', () => {
+  it('offers every challenge template, grouped by what it is for', () => {
     const html = render(<CreateChallengePage />, '/new');
-    for (const name of ['Lock In', 'Base Camp', 'Cut', 'Start empty']) {
+    for (const name of ['Lock In', 'Base Camp', 'Winter Arc', 'Cut', 'Recomp', 'Run Club', 'Reset', 'Deep Work', 'Start empty']) {
       expect(html).toContain(name);
     }
+    for (const focus of ['Balanced', 'Body composition', 'Endurance', 'Mind']) {
+      expect(html).toContain(focus);
+    }
+  });
+
+  it('explains only the template you picked, not all fourteen', () => {
+    const html = render(<CreateChallengePage />, '/new');
+    const blurbs = html.split('The balanced one').length - 1;
+    expect(blurbs).toBe(1);
   });
 
   it('starts on a template, with its rules already listed', () => {
@@ -472,8 +481,8 @@ describe('Create challenge', () => {
   it('says what each template costs you if you are perfect, and how forgiving it is', () => {
     const html = render(<CreateChallengePage />, '/new');
     expect(html).toContain('pts if perfect');
-    expect(html).toContain('6 gym passes');
-    expect(html).toContain('first slip each week free');
+    expect(html).toContain('free passes a week');
+    expect(html).toContain('First slip each week is free');
   });
 
   it('cannot be submitted while empty', () => {

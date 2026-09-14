@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Rule } from '../../types';
-import { CHALLENGE_TEMPLATES, DEFAULT_TEMPLATE_ID } from './templates';
+import {
+  CHALLENGE_TEMPLATES, DEFAULT_TEMPLATE_ID, ceilingOf, passSummary, templatesByFocus,
+} from './templates';
 
 /** Deterministic ids, so a failure names the rule rather than a nanoid. */
 function idFactory() {
@@ -10,41 +12,6 @@ function idFactory() {
 
 const built = CHALLENGE_TEMPLATES.map(t => ({ template: t, rules: t.build(idFactory()) }));
 const withRules = built.filter(b => b.rules.length > 0);
-
-/**
- * Everything going right, every day — the budget the numbers were picked
- * against. Mirrors how aggregate.ts actually accumulates, so drift in either
- * shows up here.
- */
-function ceilingOf(rules: Rule[], weeks: number): number {
-  const days = weeks * 7;
-  const byId = new Map(rules.map(r => [r.id, r]));
-
-  return rules.reduce((total, rule) => {
-    switch (rule.kind) {
-      case 'binary':
-        return total + (rule.weeklyCap
-          ? rule.weeklyCap.maxScoringDays * rule.pointsYes * weeks
-          : rule.pointsYes * days);
-      case 'counter':
-        return total + rule.maxPoints * days;
-      case 'range':
-        return total + Math.max(rule.pointsAtMin, rule.pointsAtMax) * days;
-      case 'penalty':
-        return total + rule.pointsClean * days;
-      case 'streak': {
-        // A streak on a capped rule can't actually run clean; the guard below
-        // rejects those, so this arithmetic only ever sees uncapped refs.
-        void byId.get(rule.ruleRef);
-        return total + (rule.repeatable
-          ? Math.floor(days / rule.daysRequired) * rule.bonusPoints
-          : rule.bonusPoints);
-      }
-      case 'tracker':
-        return total + rule.maxPoints;
-    }
-  }, 0);
-}
 
 describe.each(built)('$template.name', ({ template, rules }) => {
   it('has unique rule ids', () => {
@@ -59,10 +26,9 @@ describe.each(built)('$template.name', ({ template, rules }) => {
     for (const rule of rules) expect(rule.name.trim().length).toBeGreaterThan(0);
   });
 
-  it('states a ceiling that matches its own numbers', () => {
+  it('is worth enough to be worth playing', () => {
     if (rules.length === 0) return;
-    // Within a point, since the stated figure is rounded for display.
-    expect(Math.abs(ceilingOf(rules, template.weeks) - template.ceiling)).toBeLessThanOrEqual(1);
+    expect(ceilingOf(rules, template.weeks)).toBeGreaterThan(100);
   });
 
   it('runs for somewhere between six and twelve weeks', () => {
@@ -101,11 +67,16 @@ describe.each(withRules)('$template.name — streaks', ({ rules }) => {
     }
   });
 
-  /* Any value above zero scores, so one logged step would keep it alive. */
-  it('never watches a counter', () => {
+  /*
+   * Any value above zero scores on a counter, so a streak watching one has to
+   * demand full credit or a single logged unit keeps it alive forever.
+   */
+  it('only watches a counter at full credit', () => {
     for (const s of streaks) {
       if (s.kind !== 'streak') continue;
-      expect(byId.get(s.ruleRef)?.kind, `${s.name} watches a counter`).not.toBe('counter');
+      if (byId.get(s.ruleRef)?.kind === 'counter') {
+        expect(s.qualifier, `${s.name} watches a counter without requiring full credit`).toBe('full');
+      }
     }
   });
 
@@ -172,6 +143,47 @@ describe.each(withRules)('$template.name — fairness', ({ template, rules }) =>
     }
   });
 
+  /*
+   * The whole point of the ask: one or two passes a week, not six for a nine
+   * week run. Anything that can cost you points needs a real buffer.
+   */
+  it('gives at least one pass per week on everything that can bite', () => {
+    for (const rule of rules) {
+      const bites = rule.kind === 'penalty' || (rule.kind === 'binary' && !!rule.weeklyCap);
+      if (!bites) continue;
+      const count = (rule.kind === 'penalty' || rule.kind === 'binary')
+        ? rule.freePasses?.count ?? 0
+        : 0;
+      expect(count, `${rule.name} has ${count} passes over ${template.weeks} weeks`)
+        .toBeGreaterThanOrEqual(template.weeks);
+    }
+  });
+
+  /*
+   * These counts used to be typed into each blurb by hand, and one of them was
+   * already wrong — the card claimed 13 passes where the rules gave 14.
+   */
+  it('quotes a pass rate that matches the rules', () => {
+    const summary = passSummary(rules, template.weeks);
+    if (!summary) return;
+    const rates = rules
+      .filter(r => r.kind === 'penalty' || r.kind === 'binary')
+      .map(r => (r.kind === 'penalty' || r.kind === 'binary' ? r.freePasses?.count ?? 0 : 0))
+      .filter(n => n > 0)
+      .map(n => n / template.weeks);
+    const low = Math.round(Math.min(...rates) * 10) / 10;
+    expect(summary).toContain(String(low));
+  });
+
+  it('never quotes a pass rate below one a week', () => {
+    const rates = rules
+      .filter(r => r.kind === 'penalty' || (r.kind === 'binary' && !!r.weeklyCap))
+      .map(r => (r.kind === 'penalty' || r.kind === 'binary' ? r.freePasses?.count ?? 0 : 0));
+    for (const count of rates) {
+      expect(count / template.weeks).toBeGreaterThanOrEqual(1);
+    }
+  });
+
   it('includes a personal goal, so it is not decided by who started fitter', () => {
     expect(rules.some(r => r.kind === 'tracker')).toBe(true);
   });
@@ -192,5 +204,20 @@ describe('the template list', () => {
 
   it('offers an empty option for people who want to build their own', () => {
     expect(CHALLENGE_TEMPLATES.some(t => t.build(idFactory()).length === 0)).toBe(true);
+  });
+
+  it('offers real variety rather than reskins of one shape', () => {
+    expect(CHALLENGE_TEMPLATES.length).toBeGreaterThanOrEqual(10);
+    const shapes = new Set(
+      CHALLENGE_TEMPLATES.map(t =>
+        t.build(idFactory()).map(r => r.kind).sort().join(','),
+      ),
+    );
+    expect(shapes.size).toBeGreaterThanOrEqual(6);
+  });
+
+  it('groups every template under a focus, losing none', () => {
+    const grouped = templatesByFocus().flatMap(g => g.templates);
+    expect(grouped).toHaveLength(CHALLENGE_TEMPLATES.length);
   });
 });

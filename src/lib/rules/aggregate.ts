@@ -13,6 +13,7 @@ import type {
   Challenge,
   Entry,
   Member,
+  Rule,
   StreakRule,
 } from '../../types';
 import type {
@@ -24,6 +25,7 @@ import type {
 import type { DateString } from '../../types';
 import { countConsecutiveDaysAtEnd, diffDays, getWeekWindow } from '../dates';
 import { evaluateEntry } from './evaluate';
+import { qualifiesForStreak } from './kinds';
 
 // ---------------------------------------------------------------------------
 // Member aggregation
@@ -93,7 +95,8 @@ export function aggregateMember(
   }
 
   // Build per-rule bonus pts from streak rules.
-  const streakBonusByDate = computeStreakBonuses(streakRules, evaluated);
+  const ruleById = new Map(challenge.config.rules.map(r => [r.id, r]));
+  const streakBonusByDate = computeStreakBonuses(streakRules, evaluated, ruleById);
 
   // Accumulate totals.
   let totalPoints = 0;
@@ -285,15 +288,18 @@ export function evaluateAllEntries(
 function computeStreakBonuses(
   streakRules: StreakRule[],
   evaluated: EvaluatedEntry[],
+  ruleById: Map<string, Rule>,
 ): Map<DateString, Map<string, number>> {
   const result = new Map<DateString, Map<string, number>>();
 
   for (const rule of streakRules) {
-    // Collect dates where the referenced rule scored > 0.
+    // Days that count toward this streak. `qualifiesForStreak` is shared with
+    // the log UI so both agree on what a qualifying day is.
+    const watched = ruleById.get(rule.ruleRef);
     const positiveDates: DateString[] = [];
     for (const entry of evaluated) {
       const refScore = entry.perRule[rule.ruleRef];
-      if (refScore && refScore.points > 0) {
+      if (refScore && qualifiesForStreak(rule, watched, refScore.points)) {
         positiveDates.push(entry.date);
       }
     }

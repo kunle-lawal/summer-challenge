@@ -6,6 +6,7 @@
 import type { Challenge, DateString, Entry, Member, StreakRule } from '../../types';
 import { addDays, diffDays } from '../dates';
 import { evaluateEntry } from './evaluate';
+import { qualifiesForStreak } from './kinds';
 
 export interface StreakRunState {
   /** Dates in the active run segment (ascending). */
@@ -45,26 +46,29 @@ export function getStreakRunAtDate(
     .filter(e => e.date <= asOfDate)
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  const watched = challenge.config.rules.find(r => r.id === streakRule.ruleRef);
   const positiveDates: DateString[] = [];
-  let asOfPoints = 0;
+  let asOfQualifies = false;
   let refLoggedOnAsOf = false;
 
   for (const entry of entriesUpTo) {
     const ev = evaluateEntry(challenge, entry, member, memberEntries);
     const pts = ev.perRule[streakRule.ruleRef]?.points ?? 0;
+    const qualifies = qualifiesForStreak(streakRule, watched, pts);
     if (entry.date === asOfDate) {
-      asOfPoints = pts;
+      asOfQualifies = qualifies;
       refLoggedOnAsOf = entry.values[streakRule.ruleRef] !== undefined;
     }
-    if (pts > 0) positiveDates.push(entry.date);
+    if (qualifies) positiveDates.push(entry.date);
   }
 
-  if (refLoggedOnAsOf && asOfPoints <= 0) {
+  // Logged the watched rule today but fell short: the run is broken, not paused.
+  if (refLoggedOnAsOf && !asOfQualifies) {
     return { runDates: [], count: 0, complete: false, brokenOnDate: true };
   }
 
   let endDate: DateString | null = null;
-  if (asOfPoints > 0) {
+  if (asOfQualifies) {
     endDate = asOfDate;
   } else if (positiveDates.length > 0) {
     endDate = positiveDates[positiveDates.length - 1] ?? null;
