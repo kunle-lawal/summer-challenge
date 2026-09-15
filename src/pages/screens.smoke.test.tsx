@@ -14,7 +14,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from 'styled-components';
 import type { ReactElement } from 'react';
 import { appTheme } from '@/theme/theme';
-import { ENTRIES, MEMBERS, OWNER_UID, makeChallenge, makeEntry, makeMember } from '@/test/fixtures';
+import { ENTRIES, MEMBERS, makeChallenge, makeEntry, makeMember } from '@/test/fixtures';
 
 const challengeState = {
   challenge: makeChallenge(),
@@ -25,7 +25,6 @@ const challengeState = {
   entries: ENTRIES,
   auditLog: [] as unknown[],
   isEnded: false,
-  isOwner: false,
   activeMembers: MEMBERS,
 };
 
@@ -46,15 +45,17 @@ vi.mock('@/context/SelectedMemberContext', () => ({
   SelectedMemberProvider: ({ children }: { children: ReactElement }) => children,
 }));
 
-const authState = {
-  user: { uid: 'owner-uid', displayName: 'Kunle' },
-  loading: false,
-  uid: 'owner-uid' as string | null,
+const adminState = {
+  isAdmin: false,
+  entering: false,
+  lastError: null as string | null,
+  enterAdminMode: vi.fn(),
+  exitAdminMode: vi.fn(),
 };
 
-vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => authState,
-  AuthProvider: ({ children }: { children: ReactElement }) => children,
+vi.mock('@/context/AdminModeContext', () => ({
+  useAdminMode: () => adminState,
+  AdminModeProvider: ({ children }: { children: ReactElement }) => children,
 }));
 
 import { ChallengeHomePage } from './ChallengeHomePage';
@@ -107,8 +108,8 @@ beforeEach(() => {
   challengeState.entries = ENTRIES;
   challengeState.activeMembers = MEMBERS;
   memberState.selectedMemberId = 'm1';
-  authState.uid = 'owner-uid';
-  challengeState.isOwner = false;
+  adminState.isAdmin = false;
+  adminState.lastError = null;
   challengeState.auditLog = [];
   vi.setSystemTime(new Date('2026-05-22T12:00:00Z'));
 });
@@ -423,20 +424,20 @@ describe('Member picker', () => {
 // ---------------------------------------------------------------------------
 
 describe('Settings', () => {
-  /*
-   * There is no mode to unlock any more. The account either owns the challenge
-   * or it doesn't, and the security rules reach the same verdict independently
-   * — so hiding the controls and refusing the writes can't disagree.
-   */
-  it('turns a non-owner away instead of asking for a password', () => {
+  it('asks for the owner password before showing anything', () => {
     const html = render(<AdminPage />, '/c/abc123/admin');
-    expect(html).toContain('Only the owner can change this');
+    expect(html).toContain('Enter the owner password');
     expect(html).not.toContain('Delete challenge');
-    expect(html).not.toContain('password');
+  });
+
+  it('says the password cannot be reset, since it cannot', () => {
+    adminState.lastError = 'wrong_password';
+    const html = render(<AdminPage />, '/c/abc123/admin');
+    expect(html).toContain('no way to reset it');
   });
 
   it('shows every section once unlocked', () => {
-    challengeState.isOwner = true;
+    adminState.isAdmin = true;
     const html = render(<AdminPage />, '/c/abc123/admin');
     for (const section of ['Basics', 'Rules', 'Members', 'History log', 'End the challenge']) {
       expect(html).toContain(section);
@@ -444,14 +445,14 @@ describe('Settings', () => {
   });
 
   it('keeps the capabilities the design dropped', () => {
-    challengeState.isOwner = true;
+    adminState.isAdmin = true;
     const html = render(<AdminPage />, '/c/abc123/admin');
     expect(html).toContain('Delete challenge');
     expect(html).toContain('Rename'); // per-member rename
   });
 
   it('offers reopening rather than ending once a challenge is over', () => {
-    challengeState.isOwner = true;
+    adminState.isAdmin = true;
     challengeState.challenge = makeChallenge({ status: 'ended' });
     const html = render(<AdminPage />, '/c/abc123/admin');
     expect(html).toContain('Reopen challenge');
@@ -459,7 +460,7 @@ describe('Settings', () => {
   });
 
   it('renders the challenge name in an editable field', () => {
-    challengeState.isOwner = true;
+    adminState.isAdmin = true;
     const html = render(<AdminPage />, '/c/abc123/admin');
     expect(html).toContain('Challenge name');
     expect(html).toContain('value="Summer Challenge"');
@@ -469,13 +470,11 @@ describe('Settings', () => {
 // ---------------------------------------------------------------------------
 
 describe('Create challenge', () => {
-  it('lays out all three steps, and no longer asks for an owner password', () => {
+  it('lays out all three steps', () => {
     const html = render(<CreateChallengePage />, '/new');
     expect(html).toContain('Name and dates');
     expect(html).toContain('Rules');
-    expect(html).toContain('Who&#x27;s playing');
-    // Ownership is the signed-in account now, so there is nothing to set.
-    expect(html).not.toContain('Owner password');
+    expect(html).toContain('Password and people');
   });
 
   it('offers every challenge template, grouped by what it is for', () => {

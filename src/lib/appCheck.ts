@@ -1,38 +1,22 @@
 /**
- * Firebase App Check.
+ * Firebase App Check — stub only.
  *
- * Security rules decide what a *signed-in account* may do. App Check is the
- * other half: it attests that a request came from this app at all, rather than
- * from a script hammering the API with a stolen config. The Firebase config in
- * a web bundle is public by design, so without App Check anyone can point their
- * own client at the project and work through whatever the rules permit.
+ * Real reCAPTCHA Enterprise wiring is deferred to a later task.
+ * See V2_PLAN §3.6 for the security design intent.
  *
- * It stays off until `VITE_RECAPTCHA_SITE_KEY` is set, because enabling
- * enforcement without a key configured locks the real app out. To turn it on:
- *
- *   1. Firebase console → App Check → register the web app with reCAPTCHA v3.
- *   2. Put the site key in `VITE_RECAPTCHA_SITE_KEY`.
- *   3. Deploy, watch the App Check metrics until verified requests dominate.
- *   4. Only then switch enforcement on for Firestore.
- *
- * Doing step 4 before step 3 takes the app down for everyone still on an old
- * bundle.
+ * TODO(human-review): Wire up reCAPTCHA Enterprise before production launch.
+ *   1. Enable App Check in Firebase console (reCAPTCHA Enterprise provider).
+ *   2. Import initializeAppCheck + ReCaptchaEnterpriseProvider from 'firebase/app-check'.
+ *   3. Call initializeAppCheck(app, { provider, isTokenAutoRefreshEnabled: true }).
+ *   4. Remove this stub.
  */
 
-import { initializeAppCheck, ReCaptchaV3Provider, type AppCheck } from 'firebase/app-check';
-import { app } from './firebase';
+import type { FirebaseApp } from 'firebase/app';
 
-let instance: AppCheck | null = null;
-
-export function initAppCheck(): AppCheck | null {
-  if (instance) return instance;
-
-  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
-  if (!siteKey) return null;
-
-  instance = initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(siteKey),
-    isTokenAutoRefreshEnabled: true,
-  });
-  return instance;
+/**
+ * Stub. Calling this now is a no-op; it will become the real App Check
+ * initialiser once the reCAPTCHA Enterprise wiring lands.
+ */
+export function initAppCheck(_app: FirebaseApp): void {
+  // no-op until real wiring is added
 }

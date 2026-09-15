@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import styled, { useTheme } from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
-import { useAuth } from '@/context/AuthContext';
+import { useAdminMode } from '@/context/AdminModeContext';
 import { activeRules } from '@/types';
 import { addDays, getWeekWindow, todayInTz, weekdayInitial } from '@/lib/dates';
 import { buildLeaderboard, getLoggedDayStreak } from '@/lib/rules/aggregate';
@@ -112,9 +112,9 @@ const Section = styled.section`
 `;
 
 export function MemberProfilePage() {
-  const { challenge, members, entries, isOwner } = useChallenge();
+  const { challenge, members, entries } = useChallenge();
   const { selectedMemberId } = useSelectedMember();
-  const { uid } = useAuth();
+  const { isAdmin } = useAdminMode();
   const { memberId } = useParams<{ memberId: string }>();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -181,7 +181,7 @@ export function MemberProfilePage() {
 
   const doRemove = async () => {
     setBusy(true);
-    const result = await removeMember(challenge.id, member.id, { uid: uid ?? '', memberId: selectedMemberId, isOwner: true });
+    const result = await removeMember(challenge.id, member.id, { memberId: selectedMemberId, isOwner: true });
     setBusy(false);
     setConfirmRemove(false);
     if (!result.ok) {
@@ -192,7 +192,7 @@ export function MemberProfilePage() {
       msg: `${member.name} removed`,
       undo: async () => {
         setToast(null);
-        const back = await restoreMember(challenge.id, member.id, { uid: uid ?? '', memberId: selectedMemberId, isOwner: true });
+        const back = await restoreMember(challenge.id, member.id, { memberId: selectedMemberId, isOwner: true });
         setToast({
           msg: back.ok
             ? `${member.name} is back`
@@ -217,7 +217,7 @@ export function MemberProfilePage() {
             </IconButton>
           }
           right={
-            isOwner && !isYou ? (
+            isAdmin && !isYou ? (
               <IconButton type="button" aria-label={`Actions for ${member.name}`} onClick={() => setMenuOpen(true)}>
                 <Icon name="more" />
               </IconButton>

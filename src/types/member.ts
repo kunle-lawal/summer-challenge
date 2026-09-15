@@ -89,14 +89,6 @@ export interface Member {
   active: boolean;
   /** Set when `active` flipped to false. Null while active. */
   removedAt: Timestamp | null;
-  /**
-   * The account holding this slot, or null while it is unclaimed.
-   *
-   * Display convenience only — the authoritative record is the document at
-   * `challenges/{cid}/membership/{uid}`, because security rules can look a
-   * document up by id but cannot query a collection.
-   */
-  uid: string | null;
   /** Optional tracker setup. Required to earn tracker pts but otherwise OK to omit. */
   trackerConfig?: MemberTrackerConfig | null;
 }

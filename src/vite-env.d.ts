@@ -1,8 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** reCAPTCHA v3 site key. App Check stays off while this is unset. */
-  readonly VITE_RECAPTCHA_SITE_KEY?: string;
   // v2 Firebase config
   readonly VITE_FIREBASE_API_KEY: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN: string;

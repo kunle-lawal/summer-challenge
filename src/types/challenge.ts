@@ -77,14 +77,12 @@ export interface Challenge {
   createdAt: Timestamp;
   status: ChallengeStatus;
   /**
-   * The account that created this challenge. The only thing that grants admin.
-   *
-   * Replaces the v2 owner password, which was neither a secret (the hash was
-   * world-readable) nor a lock (the hash was world-writable). Ownership is now
-   * an identity the security rules can actually check, and it is immutable
-   * after creation.
+   * SHA-256 hash of `salt + password`, hex-encoded. NOT a real auth
+   * mechanism — see V2_PLAN §4.3. Only used to gate admin actions.
    */
-  ownerUid: string;
+  ownerPasswordHash: string;
+  /** Random per-challenge salt, hex-encoded. Stored alongside the hash. */
+  ownerPasswordSalt: string;
   config: ChallengeConfig;
 }
 
