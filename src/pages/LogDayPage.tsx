@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useChallenge } from '@/context/ChallengeContext';
 import { useSelectedMember } from '@/context/SelectedMemberContext';
-import { useAuth } from '@/context/AuthContext';
 import {
   activeRules, type Entry, type RawEntryValue, type Rule, type TrackerRule,
 } from '@/types';
@@ -211,7 +210,6 @@ function TrackerSetup({
 export function LogDayPage() {
   const { challenge, members, entries } = useChallenge();
   const { selectedMemberId } = useSelectedMember();
-  const { uid } = useAuth();
   const [params] = useSearchParams();
   const navigate = useNavigate();
 
@@ -317,7 +315,6 @@ export function LogDayPage() {
     ) as Entry['values'];
 
     const result = await upsertEntry(challenge.id, me.id, date, payload, {
-      uid: uid ?? '',
       memberId: me.id,
       isOwner: false,
     });
@@ -345,7 +342,7 @@ export function LogDayPage() {
         goalVal,
         direction: goalVal < startVal ? 'down' : 'up',
       },
-      { uid: uid ?? '', memberId: me.id, isOwner: false },
+      { memberId: me.id, isOwner: false },
     );
     setSaving(false);
     if (!result.ok) {

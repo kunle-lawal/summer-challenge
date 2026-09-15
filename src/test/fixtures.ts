@@ -6,9 +6,6 @@ import type { Challenge, Entry, Member, Rule } from '@/types';
 
 const ts = { seconds: 0, nanoseconds: 0 } as never;
 
-/** The account that owns the fixture challenge. */
-export const OWNER_UID = 'owner-uid';
-
 export const RULES: Rule[] = [
   { id: 'gym', kind: 'binary', name: 'Gym', order: 0, pointsYes: 1, pointsNo: 0, pointsFree: 1,
     freePasses: { count: 5, lifetime: true }, weeklyCap: { maxScoringDays: 4 } },
@@ -29,7 +26,8 @@ export function makeChallenge(over: Partial<Challenge> = {}): Challenge {
     name: 'Summer Challenge',
     createdAt: ts,
     status: 'active',
-    ownerUid: OWNER_UID,
+    ownerPasswordHash: 'hash',
+    ownerPasswordSalt: 'salt',
     config: {
       startDate: '2026-05-01',
       endDate: '2026-07-26',
@@ -42,7 +40,7 @@ export function makeChallenge(over: Partial<Challenge> = {}): Challenge {
 }
 
 export function makeMember(over: Partial<Member> = {}): Member {
-  return { id: 'm1', name: 'Kunle', createdAt: ts, active: true, removedAt: null, uid: null, ...over };
+  return { id: 'm1', name: 'Kunle', createdAt: ts, active: true, removedAt: null, ...over };
 }
 
 export const MEMBERS: Member[] = [

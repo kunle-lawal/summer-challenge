@@ -4,7 +4,6 @@ import { nanoid } from 'nanoid';
 import styled from 'styled-components';
 import type { ChallengeConfig, Rule } from '@/types';
 import { createChallenge } from '@/lib/challenges';
-import { useAuth } from '@/context/AuthContext';
 import { addMember } from '@/lib/members';
 import { getCooldownRemainingMs, isOnCooldown } from '@/lib/createCooldown';
 import {
@@ -139,7 +138,6 @@ function browserTimezone(): string {
 
 export function CreateChallengePage() {
   const navigate = useNavigate();
-  const { uid } = useAuth();
 
   const tzGuess = useMemo(browserTimezone, []);
   const today = useMemo(() => todayInTz(tzGuess), [tzGuess]);
@@ -153,6 +151,7 @@ export function CreateChallengePage() {
   const defaultTemplate = CHALLENGE_TEMPLATES.find(t => t.id === DEFAULT_TEMPLATE_ID)!;
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
   const [rules, setRules] = useState<Rule[]>(() => defaultTemplate.build(nanoid));
+  const [password, setPassword] = useState('');
   const [names, setNames] = useState<string[]>([]);
   const [nameDraft, setNameDraft] = useState('');
   const [addingMember, setAddingMember] = useState(false);
@@ -163,8 +162,9 @@ export function CreateChallengePage() {
   const [copied, setCopied] = useState(false);
 
   const nameOk = name.trim().length >= 3;
+  const passwordOk = password.trim().length >= 4;
   const datesOk = !endDate || endDate >= startDate;
-  const ready = nameOk && rules.length > 0 && datesOk;
+  const ready = nameOk && passwordOk && rules.length > 0 && datesOk;
 
   const weeks = endDate
     ? Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 604_800_000))
@@ -215,7 +215,7 @@ export function CreateChallengePage() {
       rules: rules.map((r, i) => ({ ...r, order: i })),
     };
 
-    const result = await createChallenge({ name: name.trim(), ownerUid: uid ?? '', config });
+    const result = await createChallenge({ name: name.trim(), password: password.trim(), config });
     if (!result.ok) {
       setBusy(false);
       setError(
@@ -227,7 +227,7 @@ export function CreateChallengePage() {
     }
 
     for (const memberName of names) {
-      await addMember(result.challengeId, memberName, { uid: uid ?? '', memberId: null, isOwner: true });
+      await addMember(result.challengeId, memberName, { memberId: null, isOwner: true });
     }
 
     setBusy(false);
@@ -445,11 +445,33 @@ export function CreateChallengePage() {
             <NumHead>
               <span className="n">3</span>
               <div>
-                <h2>Who's playing</h2>
-                <Meta>You can add people later too.</Meta>
+                <h2>Password and people</h2>
+                <Meta>The password is what lets you change things later.</Meta>
               </div>
             </NumHead>
             <Stack>
+              <Field>
+                <label htmlFor="c-pw">Owner password</label>
+                <Input
+                  id="c-pw"
+                  $text
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                />
+                {password.length > 0 && !passwordOk ? (
+                  <ErrorText>
+                    That’s {password.trim().length} characters. Add {4 - password.trim().length} more.
+                  </ErrorText>
+                ) : (
+                  <Hint>
+                    Four characters or more. There’s no way to reset it, so pick something you’ll
+                    remember.
+                  </Hint>
+                )}
+              </Field>
+
               {names.length > 0 && (
                 <List>
                   {names.map(n => (
@@ -473,7 +495,8 @@ export function CreateChallengePage() {
                 Add someone
               </AddRow>
               <Hint>
-                Everyone picks their own name from this list when they open the link.
+                You can add people later too. Everyone picks their own name from this list when they
+                open the link.
               </Hint>
             </Stack>
           </Section>

@@ -10,7 +10,6 @@
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -25,9 +24,3 @@ export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getA
 
 /** The Firestore database instance for all read/write operations. */
 export const db = getFirestore(app);
-
-/**
- * Firebase Auth. Every read and write in this app now requires a signed-in
- * account — the security rules deny everything to `request.auth == null`.
- */
-export const auth = getAuth(app);
